@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sổ ghi chép công việc</title>
+  <meta name="description" content="Sổ ghi chép quản lý công việc cá nhân, đồng bộ với Google Calendar." />
+  <meta name="theme-color" content="#2b6cb0" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📒</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <button id="menuBtn" class="icon-btn menu-btn" type="button" aria-label="Mở danh mục" aria-controls="sidebar">☰</button>
+    <h1 class="brand">📒 <span>Sổ ghi chép</span></h1>
+    <span class="spacer"></span>
+    <span id="syncStatus" class="sync-status" aria-live="polite"></span>
+    <button id="syncBtn" class="btn" type="button" hidden>⟳ <span class="label">Đồng bộ</span></button>
+    <button id="connectBtn" class="btn primary" type="button">Kết nối Google Calendar</button>
+    <button id="settingsBtn" class="icon-btn" type="button" aria-label="Cài đặt" title="Cài đặt">⚙</button>
+  </header>
+
+  <div class="layout">
+    <nav id="sidebar" class="sidebar" aria-label="Danh mục">
+      <ul class="views">
+        <li><button type="button" data-view="today">☀️ Hôm nay <span class="count" data-count="today"></span></button></li>
+        <li><button type="button" data-view="upcoming">🗓️ 7 ngày tới <span class="count" data-count="upcoming"></span></button></li>
+        <li><button type="button" data-view="all">📚 Tất cả <span class="count" data-count="all"></span></button></li>
+        <li><button type="button" data-view="nodate">📝 Ghi chú không hẹn ngày <span class="count" data-count="nodate"></span></button></li>
+        <li><button type="button" data-view="done">✅ Đã hoàn thành <span class="count" data-count="done"></span></button></li>
+        <li><button type="button" data-view="gcal">📆 Lịch Google</button></li>
+      </ul>
+      <h2 class="side-heading">Nhãn</h2>
+      <ul id="tagList" class="tag-list"></ul>
+    </nav>
+    <div id="backdrop" class="backdrop" hidden></div>
+
+    <main class="main">
+      <div class="toolbar">
+        <h2 id="viewTitle" class="view-title">Hôm nay</h2>
+        <span class="spacer"></span>
+        <input id="search" class="search" type="search" placeholder="Tìm kiếm… ( / )" aria-label="Tìm kiếm" />
+        <select id="sort" aria-label="Sắp xếp">
+          <option value="date">Theo ngày</option>
+          <option value="priority">Theo ưu tiên</option>
+          <option value="updated">Mới sửa gần đây</option>
+        </select>
+        <label id="hideDoneLabel" class="check small"><input id="hideDone" type="checkbox" /> Ẩn việc đã xong</label>
+      </div>
+
+      <form id="quickAdd" class="quick-add" autocomplete="off">
+        <input id="quickInput" type="text" placeholder="Thêm nhanh: Họp nhóm ngày mai 9h-10h #công-việc !" aria-label="Thêm nhanh công việc" />
+        <button class="btn primary" type="submit">Thêm</button>
+        <button id="newBtn" class="btn" type="button" title="Phím tắt: N">Chi tiết…</button>
+      </form>
+      <p class="hint">
+        Mẹo: viết <code>hôm nay</code>, <code>ngày mai</code>, <code>thứ 6</code>, <code>15/10</code>, <code>9h30</code>,
+        <code>2h chiều</code>, <code>#nhãn</code>, <code>!</code> (ưu tiên cao) ngay trong câu.
+      </p>
+
+      <section id="list" class="list" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <!-- Hộp soạn / sửa công việc -->
+  <dialog id="editor" class="dialog" aria-labelledby="editorHeading">
+    <form id="editorForm" method="dialog">
+      <h2 id="editorHeading">Công việc mới</h2>
+      <label class="field">Tiêu đề
+        <input name="title" required maxlength="500" />
+      </label>
+      <label class="field">Nội dung ghi chép
+        <textarea name="content" rows="8" class="ruled" placeholder="Ghi chú chi tiết, các bước cần làm…"></textarea>
+      </label>
+      <div class="row">
+        <label class="field">Ngày <input name="date" type="date" /></label>
+        <label class="field">Bắt đầu <input name="start" type="time" /></label>
+        <label class="field">Kết thúc <input name="end" type="time" /></label>
+      </div>
+      <div class="row">
+        <label class="field">Trạng thái
+          <select name="status">
+            <option value="todo">Cần làm</option>
+            <option value="doing">Đang làm</option>
+            <option value="done">Hoàn thành</option>
+          </select>
+        </label>
+        <label class="field">Ưu tiên
+          <select name="priority">
+            <option value="low">Thấp</option>
+            <option value="normal">Bình thường</option>
+            <option value="high">Cao</option>
+          </select>
+        </label>
+        <label class="field">Nhắc trước
+          <select name="reminder">
+            <option value="">Mặc định của lịch</option>
+            <option value="0">Đúng giờ</option>
+            <option value="10">10 phút</option>
+            <option value="30">30 phút</option>
+            <option value="60">1 giờ</option>
+            <option value="1440">1 ngày</option>
+          </select>
+        </label>
+      </div>
+      <label class="field">Nhãn
+        <input name="tags" placeholder="Cách nhau bằng dấu phẩy, vd: công việc, gia đình" />
+      </label>
+      <label class="check"><input name="sync" type="checkbox" /> Đồng bộ lên Google Calendar</label>
+      <p id="syncHint" class="help"></p>
+      <p id="editorMeta" class="meta"></p>
+      <div class="actions">
+        <button id="deleteBtn" class="btn danger" type="button">Xoá</button>
+        <span class="spacer"></span>
+        <button id="cancelBtn" class="btn" type="button">Huỷ</button>
+        <button class="btn primary" value="save">Lưu</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Cài đặt -->
+  <dialog id="settings" class="dialog" aria-labelledby="settingsHeading">
+    <form id="settingsForm" method="dialog">
+      <h2 id="settingsHeading">Cài đặt</h2>
+
+      <section class="settings-section">
+        <h3>Kết nối Google Calendar</h3>
+        <label class="field">Google OAuth Client ID
+          <input name="clientId" placeholder="xxxxxxxx.apps.googleusercontent.com" spellcheck="false" />
+        </label>
+        <p class="help">
+          Tạo Client ID loại <b>Web application</b> trong Google Cloud Console và thêm
+          <code id="originHint"></code> vào mục <i>Authorized JavaScript origins</i>.
+          <a id="readmeLink" target="_blank" rel="noopener">Xem hướng dẫn chi tiết</a>.
+        </p>
+        <p id="accountInfo" class="account"></p>
+        <label class="field">Lịch dùng để lưu công việc
+          <select name="calendarId"></select>
+        </label>
+        <div class="row-buttons">
+          <button id="createCalBtn" class="btn" type="button">＋ Tạo lịch riêng “Sổ ghi chép”</button>
+          <button id="disconnectBtn" class="btn danger" type="button">Ngắt kết nối</button>
+        </div>
+        <label class="check"><input name="autoSync" type="checkbox" /> Tự động đồng bộ khi có thay đổi và mỗi 5 phút</label>
+        <label class="check"><input name="defaultSync" type="checkbox" /> Công việc mới mặc định được đồng bộ lên Google Calendar</label>
+      </section>
+
+      <section class="settings-section">
+        <h3>Sao lưu dữ liệu</h3>
+        <p class="help">Dữ liệu luôn được lưu trên trình duyệt này. Nên xuất file sao lưu định kỳ.</p>
+        <div class="row-buttons">
+          <button id="exportBtn" class="btn" type="button">⬇ Xuất file sao lưu</button>
+          <label class="btn file-btn">⬆ Nhập từ file…<input id="importFile" type="file" accept=".json,application/json" /></label>
+        </div>
+      </section>
+
+      <div class="actions">
+        <span class="spacer"></span>
+        <button class="btn primary" value="close">Xong</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
