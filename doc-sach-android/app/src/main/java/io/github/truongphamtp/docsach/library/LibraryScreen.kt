@@ -462,6 +462,7 @@ private fun BookTile(book: BookRecord, coverLoader: CoverLoader?, onClick: () ->
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
+                        .align(Alignment.BottomEnd)
                         .padding(8.dp)
                         .clip(CircleShape)
                         .background(Brush.horizontalGradient(listOf(p.accentLight, p.accent)))
