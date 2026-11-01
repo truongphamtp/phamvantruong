@@ -34,12 +34,14 @@ import androidx.compose.ui.unit.sp
 import io.github.truongphamtp.docsach.core.BookFormat
 import io.github.truongphamtp.docsach.core.BookRecord
 import io.github.truongphamtp.docsach.core.FoldInfo
+import io.github.truongphamtp.docsach.core.Note
 import io.github.truongphamtp.docsach.core.ReadingPosition
 import io.github.truongphamtp.docsach.format.BookContent
 import io.github.truongphamtp.docsach.format.EpubArchive
 import io.github.truongphamtp.docsach.format.EpubParser
 import io.github.truongphamtp.docsach.format.TxtParser
 import io.github.truongphamtp.docsach.library.LibraryScreen
+import io.github.truongphamtp.docsach.library.NotesScreen
 import io.github.truongphamtp.docsach.platform.AndroidPdfSource
 import io.github.truongphamtp.docsach.platform.AndroidSpeechEngine
 import io.github.truongphamtp.docsach.platform.EpubImageProvider
@@ -66,26 +68,58 @@ fun AppRoot(
     fold: FoldInfo?,
 ) {
     var openBookId by rememberSaveable { mutableStateOf<String?>(null) }
+    var jumpNoteId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showNotes by rememberSaveable { mutableStateOf(false) }
     val request by openRequests.collectAsState()
     LaunchedEffect(request) {
         request?.let {
             openBookId = it
+            jumpNoteId = null
             onOpenRequestHandled()
         }
     }
     val id = openBookId
-    if (id == null) {
-        LibraryRoute(app) { openBookId = it.id }
-    } else {
-        BackHandler { openBookId = null }
-        key(id) {
-            ReaderRoute(app, id, fold) { openBookId = null }
+    when {
+        id != null -> {
+            BackHandler { openBookId = null }
+            key(id, jumpNoteId) {
+                ReaderRoute(app, id, jumpNoteId, fold) { openBookId = null }
+            }
+        }
+        showNotes -> {
+            BackHandler { showNotes = false }
+            NotesRoute(
+                app = app,
+                onOpenNote = { book, note ->
+                    jumpNoteId = note.id
+                    openBookId = book.id
+                },
+                onBack = { showNotes = false },
+            )
+        }
+        else -> LibraryRoute(app, onOpenNotes = { showNotes = true }) {
+            jumpNoteId = null
+            openBookId = it.id
         }
     }
 }
 
 @Composable
-private fun LibraryRoute(app: DocSachApp, onOpen: (BookRecord) -> Unit) {
+private fun NotesRoute(app: DocSachApp, onOpenNote: (BookRecord, Note) -> Unit, onBack: () -> Unit) {
+    val books by app.library.books.collectAsState()
+    val readerSettings by app.settings.reader.collectAsState()
+    NotesScreen(
+        books = books,
+        coverLoader = app.covers,
+        onOpenNote = onOpenNote,
+        onDeleteNote = { book, note -> app.library.updateNotes(book.id, book.notes.filter { it.id != note.id }) },
+        onBack = onBack,
+        toolbarSide = readerSettings.toolbarSide,
+    )
+}
+
+@Composable
+private fun LibraryRoute(app: DocSachApp, onOpenNotes: () -> Unit, onOpen: (BookRecord) -> Unit) {
     val books by app.library.books.collectAsState()
     val prefs by app.settings.library.collectAsState()
     val readerSettings by app.settings.reader.collectAsState()
@@ -106,6 +140,7 @@ private fun LibraryRoute(app: DocSachApp, onOpen: (BookRecord) -> Unit) {
         onAddBooks = { picker.launch(arrayOf("*/*")) },
         onDelete = { app.importer.delete(it) },
         toolbarSide = readerSettings.toolbarSide,
+        onOpenNotes = onOpenNotes,
     )
 }
 
@@ -150,7 +185,7 @@ private fun closeSession(session: Session?) {
 }
 
 @Composable
-private fun ReaderRoute(app: DocSachApp, bookId: String, fold: FoldInfo?, onClose: () -> Unit) {
+private fun ReaderRoute(app: DocSachApp, bookId: String, jumpNoteId: String?, fold: FoldInfo?, onClose: () -> Unit) {
     val record = remember(bookId) { app.library.get(bookId) }
     if (record == null) {
         LaunchedEffect(Unit) { onClose() }
@@ -181,7 +216,13 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, fold: FoldInfo?, onClos
                     images = s.images,
                     onPositionChanged = { position, progress -> app.library.updatePosition(bookId, position, progress) },
                     onBookmarksChanged = { app.library.updateBookmarks(bookId, it) },
+                    initialNotes = record.notes,
+                    onNotesChanged = { app.library.updateNotes(bookId, it) },
                 )
+            }
+            // Mở từ sổ ghi chú: nhảy tới đúng đoạn có ghi chú và tô sáng.
+            LaunchedEffect(controller, jumpNoteId) {
+                record.notes.firstOrNull { it.id == jumpNoteId }?.let { controller.goToNote(it) }
             }
             val context = LocalContext.current
             DisposableEffect(controller) {
@@ -196,13 +237,16 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, fold: FoldInfo?, onClos
         }
         is Session.Pdf -> {
             val controller = remember(s) {
+                val jump = record.notes.firstOrNull { it.id == jumpNoteId }
                 PdfReaderController(
                     source = s.source,
                     title = record.title,
-                    initialPage = record.position.chapter,
+                    initialPage = jump?.chapter ?: record.position.chapter,
                     initialBookmarks = record.bookmarks,
                     onPositionChanged = { position, progress -> app.library.updatePosition(bookId, position, progress) },
                     onBookmarksChanged = { app.library.updateBookmarks(bookId, it) },
+                    initialNotes = record.notes,
+                    onNotesChanged = { app.library.updateNotes(bookId, it) },
                 )
             }
             PdfReaderScreen(controller, settings, app.settings::updateReader, onClose, fold)

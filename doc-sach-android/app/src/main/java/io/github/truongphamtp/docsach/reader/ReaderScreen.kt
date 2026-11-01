@@ -68,8 +68,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +79,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.truongphamtp.docsach.core.FoldInfo
 import io.github.truongphamtp.docsach.core.HardwareKey
+import io.github.truongphamtp.docsach.core.HighlightColor
 import io.github.truongphamtp.docsach.core.ReadingPosition
 import io.github.truongphamtp.docsach.core.ReaderSettings
 import io.github.truongphamtp.docsach.core.ToolbarSide
@@ -165,9 +168,15 @@ fun ReaderScreen(
     }
     controller.speechRate = settings.speechRate
 
-    LocalBackHandler.current(panel != null || menuVisible) {
-        if (panel != null) panel = null else menuVisible = false
+    LocalBackHandler.current(panel != null || menuVisible || controller.selection != null) {
+        when {
+            controller.selection != null -> controller.clearSelection()
+            panel != null -> panel = null
+            else -> menuVisible = false
+        }
     }
+    var editingNote by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
 
     val actions = listOf(
         RailAction(Icons.AutoMirrored.Rounded.ArrowBackIos, "Thư viện", onClick = onBack),
@@ -245,6 +254,55 @@ fun ReaderScreen(
                         .align(if (railOnRight) Alignment.BottomEnd else Alignment.BottomStart)
                         .windowInsetsPadding(WindowInsets.navigationBars)
                         .padding(horizontal = 16.dp, vertical = if (menuVisible) 124.dp else 48.dp),
+                )
+            }
+
+            AnimatedVisibility(
+                visible = controller.selection != null && !controller.selecting,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                enter = fadeIn() + slideInVertically { it },
+                exit = fadeOut() + slideOutVertically { it },
+            ) {
+                val active = controller.activeNote
+                SelectionBar(
+                    activeNote = active,
+                    onColor = { color ->
+                        if (active != null) {
+                            controller.updateNote(active.copy(color = color))
+                            controller.clearSelection()
+                        } else {
+                            controller.saveSelection(color)
+                        }
+                    },
+                    onNote = { editingNote = true },
+                    onCopy = {
+                        clipboard.setText(AnnotatedString(controller.selectedText))
+                        controller.clearSelection()
+                    },
+                    onDelete = active?.let { note -> { controller.removeNote(note) } },
+                    onClose = { controller.clearSelection() },
+                )
+            }
+
+            if (editingNote && controller.selection != null) {
+                val active = controller.activeNote
+                NoteEditorDialog(
+                    quote = active?.quote ?: controller.selectedText,
+                    initialText = active?.text.orEmpty(),
+                    editing = active != null,
+                    onDismiss = { editingNote = false },
+                    onSave = { text ->
+                        editingNote = false
+                        if (active != null) {
+                            controller.updateNote(active.copy(text = text.trim()))
+                            controller.clearSelection()
+                        } else {
+                            controller.saveSelection(active?.color ?: HighlightColor.YELLOW, text)
+                        }
+                    },
                 )
             }
 
@@ -332,20 +390,49 @@ private fun ReadingArea(
                 .fillMaxSize()
                 .pageGestures(
                     onTap = { pos ->
-                        if (menuVisible) {
-                            onMenuVisibleChange(false)
+                        val pages = controller.currentPages
+                        val note = if (pages != null && !menuVisible && controller.selection == null) {
+                            hitText(pages, geometry, controller.viewIndex, pos)?.let { controller.noteAt(it.offset) }
                         } else {
-                            val fx = pos.x / width
-                            when {
-                                pos.y < geometry.pageTop -> onMenuVisibleChange(true)
-                                fx < 0.3f -> controller.previousPage()
-                                fx > 0.7f -> controller.nextPage()
-                                else -> onMenuVisibleChange(true)
+                            null
+                        }
+                        when {
+                            controller.selection != null -> controller.clearSelection()
+                            menuVisible -> onMenuVisibleChange(false)
+                            // Chạm vào đoạn đã đánh dấu: mở thanh thao tác để sửa/xoá ghi chú.
+                            note != null -> controller.selectNote(note)
+                            else -> {
+                                val fx = pos.x / width
+                                when {
+                                    pos.y < geometry.pageTop -> onMenuVisibleChange(true)
+                                    fx < 0.3f -> controller.previousPage()
+                                    fx > 0.7f -> controller.nextPage()
+                                    else -> onMenuVisibleChange(true)
+                                }
                             }
                         }
                         controller.clearSearchHighlight()
                     },
-                    onSwipe = { dir -> if (dir > 0) controller.nextPage() else controller.previousPage() },
+                    onSwipe = { dir ->
+                        controller.clearSelection()
+                        if (dir > 0) controller.nextPage() else controller.previousPage()
+                    },
+                    onLongPress = { pos ->
+                        val hit = controller.currentPages?.let { hitText(it, geometry, controller.viewIndex, pos) }
+                        if (hit != null) {
+                            onMenuVisibleChange(false)
+                            controller.startSelection(hit.word)
+                            true
+                        } else {
+                            false
+                        }
+                    },
+                    onLongPressDrag = { pos ->
+                        controller.currentPages
+                            ?.let { hitText(it, geometry, controller.viewIndex, pos, nearest = true) }
+                            ?.let { controller.extendSelection(it.word) }
+                    },
+                    onLongPressEnd = { controller.finishSelection() },
                 ),
         )
         PageDecorations(controller, geometry, colors, footerMode, onFooterTap)

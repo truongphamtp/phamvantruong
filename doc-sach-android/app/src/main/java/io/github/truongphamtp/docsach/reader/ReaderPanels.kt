@@ -58,6 +58,7 @@ import io.github.truongphamtp.docsach.core.ReaderTheme
 import io.github.truongphamtp.docsach.core.ReadingPosition
 import io.github.truongphamtp.docsach.core.ToolbarSide
 import io.github.truongphamtp.docsach.format.SearchHit
+import io.github.truongphamtp.docsach.library.NoteCard
 import io.github.truongphamtp.docsach.ui.GlassGroup
 import io.github.truongphamtp.docsach.ui.GlassIconButton
 import io.github.truongphamtp.docsach.ui.GlassSearchField
@@ -82,12 +83,16 @@ internal fun TocPanel(controller: ReaderController, onNavigate: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
         HyperSegmented(
-            options = listOf("Mục lục", "Dấu trang (${controller.bookmarks.size})"),
+            options = listOf("Mục lục", "Dấu trang (${controller.bookmarks.size})", "Ghi chú (${controller.notes.size})"),
             selected = tab,
             onSelect = { tab = it },
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )
-        if (tab == 0) TocList(controller, onNavigate) else BookmarkList(controller, onNavigate)
+        when (tab) {
+            0 -> TocList(controller, onNavigate)
+            1 -> BookmarkList(controller, onNavigate)
+            else -> NoteList(controller, onNavigate)
+        }
     }
 }
 
@@ -202,6 +207,36 @@ private fun BookmarkList(controller: ReaderController, onNavigate: () -> Unit) {
                     GlassIconButton(Icons.Rounded.DeleteOutline, null, onClick = { controller.removeBookmark(mark) }, size = 36.dp)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NoteList(controller: ReaderController, onNavigate: () -> Unit) {
+    val p = LocalHyper.current
+    val notes = controller.notes
+    if (notes.isEmpty()) {
+        Text(
+            "Chưa có ghi chú.\nNhấn giữ vào một chữ trên trang, kéo để chọn đoạn, rồi chọn màu đánh dấu hoặc nút ghi chú.",
+            modifier = Modifier.padding(20.dp),
+            color = p.textSecondary,
+            fontSize = 14.sp,
+        )
+        return
+    }
+    LazyColumn(
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(notes, key = { it.id }) { note ->
+            NoteCard(
+                note = note,
+                onClick = {
+                    controller.goToNote(note)
+                    onNavigate()
+                },
+                onDelete = { controller.removeNote(note) },
+            )
         }
     }
 }

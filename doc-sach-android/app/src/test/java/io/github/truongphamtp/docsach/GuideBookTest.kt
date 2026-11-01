@@ -22,8 +22,8 @@ class GuideBookTest {
         EpubArchive(guideFile()).use { archive ->
             val book = EpubParser.parse(archive, "x")
             assertEquals("Hướng dẫn sử dụng Đọc Sách", book.title)
-            assertEquals(9, book.chapters.size)
-            assertEquals(8, book.toc.size)
+            assertEquals(10, book.chapters.size)
+            assertEquals(9, book.toc.size)
             assertEquals("Chào mừng", book.toc.first().title)
             // Lần đầu mở sẽ nhảy tới "Chào mừng" (bỏ qua trang bìa), giống Kindle.
             assertEquals(ReadingPosition(1, 0), book.startPosition)

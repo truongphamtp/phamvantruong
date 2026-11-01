@@ -59,6 +59,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.positionChanged
@@ -247,16 +248,23 @@ class ZoomState {
 }
 
 /**
- * Cử chỉ trên trang sách: chạm (theo vùng), vuốt ngang để lật trang, chụm hai ngón để phóng to.
+ * Cử chỉ trên trang sách: chạm (theo vùng), vuốt ngang để lật trang, chụm hai ngón để phóng to,
+ * nhấn giữ rồi kéo để chọn chữ (đánh dấu, ghi chú).
  */
 @Composable
 fun Modifier.pageGestures(
     onTap: (Offset) -> Unit,
     onSwipe: (direction: Int) -> Unit,
     zoom: ZoomState? = null,
+    onLongPress: ((Offset) -> Boolean)? = null,
+    onLongPressDrag: ((Offset) -> Unit)? = null,
+    onLongPressEnd: (() -> Unit)? = null,
 ): Modifier {
     val tap by rememberUpdatedState(onTap)
     val swipe by rememberUpdatedState(onSwipe)
+    val longPress by rememberUpdatedState(onLongPress)
+    val longPressDrag by rememberUpdatedState(onLongPressDrag)
+    val longPressEnd by rememberUpdatedState(onLongPressEnd)
     return this.pointerInput(zoom) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
@@ -264,15 +272,17 @@ fun Modifier.pageGestures(
             var total = Offset.Zero
             var dragging = false
             var transformed = false
-            while (true) {
-                val event = awaitPointerEvent()
+            var released = false
+
+            /** Xử lý một sự kiện chạm; trả về false khi mọi ngón tay đã nhấc. */
+            fun handle(event: PointerEvent): Boolean {
                 val pressed = event.changes.filter { it.pressed }
-                if (pressed.isEmpty()) break
+                if (pressed.isEmpty()) return false
                 if (zoom != null && pressed.size >= 2) {
                     transformed = true
                     zoom.transform(event.calculateZoom(), event.calculatePan(), event.calculateCentroid(useCurrent = true), size)
                     event.changes.forEach { if (it.positionChanged()) it.consume() }
-                    continue
+                    return true
                 }
                 val change = pressed.firstOrNull { it.id == down.id } ?: pressed.first()
                 val delta = change.positionChange()
@@ -282,18 +292,47 @@ fun Modifier.pageGestures(
                         transformed = true
                         change.consume()
                     }
-                    continue
+                    return true
                 }
                 total += delta
                 if (!dragging && total.getDistance() > slop) dragging = true
                 if (dragging) change.consume()
+                return true
+            }
+
+            // Giai đoạn 1: chờ nhấc tay, kéo, hoặc đủ thời gian nhấn giữ.
+            val timedOut = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                while (true) {
+                    if (!handle(awaitPointerEvent())) {
+                        released = true
+                        break
+                    }
+                    if (dragging || transformed) break
+                }
+            } == null
+
+            if (timedOut && !dragging && !transformed && longPress?.invoke(down.position) == true) {
+                // Đang chọn chữ: kéo để mở rộng vùng chọn cho tới khi nhấc tay.
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull { it.id == down.id }
+                    if (change == null || !change.pressed) break
+                    if (change.positionChanged()) longPressDrag?.invoke(change.position)
+                    change.consume()
+                }
+                longPressEnd?.invoke()
+                return@awaitEachGesture
+            }
+
+            if (!released) {
+                while (handle(awaitPointerEvent())) Unit
             }
             if (transformed) return@awaitEachGesture
             if (dragging) {
                 if (abs(total.x) > 40.dp.toPx() && abs(total.x) > abs(total.y) * 1.2f) {
                     swipe(if (total.x < 0) 1 else -1)
                 }
-            } else {
+            } else if (!timedOut) {
                 tap(down.position)
             }
         }

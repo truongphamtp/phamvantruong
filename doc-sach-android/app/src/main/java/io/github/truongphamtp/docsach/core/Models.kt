@@ -22,6 +22,33 @@ data class Bookmark(
     val createdAt: Long,
 )
 
+enum class HighlightColor(val label: String) {
+    YELLOW("Vàng"),
+    GREEN("Xanh lá"),
+    BLUE("Xanh dương"),
+    PINK("Hồng"),
+}
+
+/**
+ * Đoạn được đánh dấu (tô màu) kèm ghi chú.
+ * - EPUB/TXT: [chapter] là chương, [start]..[end] là vị trí ký tự trong chương.
+ * - PDF: ghi chú cho cả trang, [chapter] là chỉ số trang, [start] = [end] = 0.
+ */
+data class Note(
+    val id: String,
+    val chapter: Int,
+    val start: Int,
+    val end: Int,
+    /** Đoạn chữ được đánh dấu (để xem lại trong sổ ghi chú). */
+    val quote: String,
+    /** Nội dung ghi chú người đọc viết (có thể trống). */
+    val text: String,
+    val color: HighlightColor,
+    /** Tên chương hoặc "Trang N". */
+    val label: String,
+    val createdAt: Long,
+)
+
 /** Một cuốn sách trong thư viện. */
 data class BookRecord(
     val id: String,
@@ -37,6 +64,7 @@ data class BookRecord(
     val progress: Float = 0f,
     val position: ReadingPosition = ReadingPosition(),
     val bookmarks: List<Bookmark> = emptyList(),
+    val notes: List<Note> = emptyList(),
 )
 
 enum class ReaderTheme(val label: String) {

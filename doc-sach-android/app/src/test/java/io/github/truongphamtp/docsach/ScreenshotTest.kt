@@ -16,6 +16,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.IntSize
 import io.github.truongphamtp.docsach.core.BookFormat
 import io.github.truongphamtp.docsach.core.BookRecord
+import io.github.truongphamtp.docsach.core.HighlightColor
+import io.github.truongphamtp.docsach.core.Note
 import io.github.truongphamtp.docsach.core.LibraryPrefs
 import io.github.truongphamtp.docsach.core.ReaderSettings
 import io.github.truongphamtp.docsach.core.ReaderTheme
@@ -25,6 +27,7 @@ import io.github.truongphamtp.docsach.format.EpubArchive
 import io.github.truongphamtp.docsach.format.EpubParser
 import io.github.truongphamtp.docsach.format.TxtParser
 import io.github.truongphamtp.docsach.library.LibraryScreen
+import io.github.truongphamtp.docsach.library.NotesScreen
 import io.github.truongphamtp.docsach.reader.PdfPageSource
 import io.github.truongphamtp.docsach.reader.PdfReaderController
 import io.github.truongphamtp.docsach.reader.PdfReaderScreen
@@ -167,6 +170,53 @@ class ScreenshotTest {
     @Test
     @Config(qualifiers = "w393dp-h916dp-440dpi")
     fun readerFoldedToc() = shootReader("6-gap-may-muc-luc", guide(), ReadingPosition(4, 0), panel = ReaderPanel.TOC)
+
+    @Test
+    @Config(qualifiers = "w393dp-h916dp-440dpi")
+    fun readerNotesAndSelection() {
+        val book = story()
+        val chapter = book.chapters[0]
+        val paragraphs = chapter.blocks.filterIsInstance<io.github.truongphamtp.docsach.format.TextBlock>()
+        val first = paragraphs[1]
+        val second = paragraphs[2]
+        val notes = listOf(
+            Note("n1", 0, first.start + 13, first.start + 60, first.text.substring(13, 60), "Câu mở đầu rất đẹp", HighlightColor.YELLOW, "Chương 1", 1L),
+            Note("n2", 0, second.start, second.start + 70, second.text.substring(0, 70), "", HighlightColor.BLUE, "Chương 1", 2L),
+        )
+        var controller: ReaderController? = null
+        compose.setContent {
+            val scope = rememberCoroutineScope()
+            val c = remember { ReaderController(book, ReadingPosition(0, 0), emptyList(), scope, initialNotes = notes).also { controller = it } }
+            NoBlur { ReaderScreen(c, ReaderSettings(), {}, {}, fold = null) }
+        }
+        compose.waitUntil(20_000) { controller?.isReady == true }
+        val third = paragraphs[3]
+        controller!!.startSelection(third.start + 20 until third.start + 30)
+        controller!!.extendSelection(third.start + 60 until third.start + 66)
+        controller!!.finishSelection()
+        compose.mainClock.advanceTimeBy(1_000)
+        save("11-ghi-chu-trong-sach")
+    }
+
+    @Test
+    @Config(qualifiers = "w766dp-h864dp-400dpi")
+    fun notesScreen() {
+        val withNotes = sampleBooks.take(3).mapIndexed { i, b ->
+            b.copy(
+                notes = listOf(
+                    Note("a$i", 0, 0, 10, "Đọc sách không chỉ là học bài; đó là cách để đi thật xa mà không cần rời khỏi chỗ ngồi.", if (i == 0) "Ý hay cho tiết sinh hoạt lớp" else "", HighlightColor.entries[i % 4], "Chương 1", 1_760_000_000_000L),
+                    Note("b$i", 1, 0, 10, "Có những câu văn cần được nghĩ lâu hơn thời gian để đọc nó.", "", HighlightColor.entries[(i + 1) % 4], "Chương 2", 1_760_100_000_000L),
+                ),
+            )
+        }
+        compose.setContent {
+            NoBlur {
+                NotesScreen(withNotes, null, onOpenNote = { _, _ -> }, onDeleteNote = { _, _ -> }, onBack = {})
+            }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        save("12-so-ghi-chu")
+    }
 
     private val sampleBooks = listOf(
         BookRecord("1", "Hướng dẫn sử dụng Đọc Sách", "Đọc Sách", BookFormat.EPUB, "", null, 16_000, "a", addedAt = 5, lastOpenedAt = 50, progress = 0.37f),

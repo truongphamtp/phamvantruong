@@ -11,6 +11,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import io.github.truongphamtp.docsach.core.Bookmark
+import io.github.truongphamtp.docsach.core.HighlightColor
+import io.github.truongphamtp.docsach.core.Note
 import io.github.truongphamtp.docsach.core.ReadingPosition
 import io.github.truongphamtp.docsach.format.BookContent
 import io.github.truongphamtp.docsach.format.BookSearch
@@ -74,6 +76,8 @@ class ReaderController(
     private val worker: CoroutineDispatcher = Dispatchers.Default,
     private val onPositionChanged: (ReadingPosition, Float) -> Unit = { _, _ -> },
     private val onBookmarksChanged: (List<Bookmark>) -> Unit = {},
+    initialNotes: List<Note> = emptyList(),
+    private val onNotesChanged: (List<Note>) -> Unit = {},
 ) {
     private val chapterCount = book.chapters.size
 
@@ -106,6 +110,24 @@ class ReaderController(
 
     var searchHighlight by mutableStateOf<TextHighlight?>(null)
         private set
+
+    /** Các đoạn đánh dấu/ghi chú của cuốn sách. */
+    var notes by mutableStateOf(sortNotes(initialNotes))
+        private set
+
+    /** Đoạn đang được chọn (nhấn giữ rồi kéo). */
+    var selection by mutableStateOf<TextHighlight?>(null)
+        private set
+
+    /** Ghi chú đang được chạm vào để sửa/xoá. */
+    var activeNote by mutableStateOf<Note?>(null)
+        private set
+
+    /** Đang kéo để chọn chữ (ẩn thanh thao tác cho tới khi nhấc tay). */
+    var selecting by mutableStateOf(false)
+        private set
+
+    private var selectionAnchor: IntRange? = null
     var speechHighlight by mutableStateOf<TextHighlight?>(null)
         private set
 
@@ -243,6 +265,7 @@ class ReaderController(
     }
 
     private fun moveTo(newChapter: Int, offset: Int, direction: Int) {
+        clearSelection()
         chapter = newChapter
         anchor = offset
         navDirection = direction
@@ -301,6 +324,101 @@ class ReaderController(
 
     private fun sortBookmarks(list: List<Bookmark>) = list.sortedBy { book.globalOffset(it.position) }
 
+    // ---------------------------------------------------------------- đánh dấu & ghi chú
+
+    /** Bắt đầu chọn chữ ở từ [word] (vị trí ký tự trong chương hiện tại). */
+    fun startSelection(word: IntRange) {
+        activeNote = null
+        selectionAnchor = word
+        selecting = true
+        selection = TextHighlight(chapter, word.first, word.last + 1)
+    }
+
+    /** Kéo rộng vùng chọn tới từ [word]. */
+    fun extendSelection(word: IntRange) {
+        val anchor = selectionAnchor ?: return
+        selection = TextHighlight(chapter, minOf(anchor.first, word.first), maxOf(anchor.last, word.last) + 1)
+    }
+
+    fun finishSelection() {
+        selecting = false
+    }
+
+    fun clearSelection() {
+        selection = null
+        selectionAnchor = null
+        activeNote = null
+        selecting = false
+    }
+
+    /** Chữ của một đoạn trong chương. */
+    fun textOf(range: TextHighlight): String {
+        val chapterContent = book.chapters.getOrNull(range.chapter) ?: return ""
+        val sb = StringBuilder()
+        for (block in chapterContent.blocks) {
+            if (block !is TextBlock || block.end <= range.start || block.start >= range.end) continue
+            val from = (range.start - block.start).coerceIn(0, block.text.length)
+            val to = (range.end - block.start).coerceIn(from, block.text.length)
+            if (sb.isNotEmpty()) sb.append('\n')
+            sb.append(block.text, from, to)
+        }
+        return sb.toString().trim()
+    }
+
+    val selectedText: String get() = selection?.let(::textOf).orEmpty()
+
+    /** Lưu vùng đang chọn thành đoạn đánh dấu (kèm ghi chú nếu có). */
+    fun saveSelection(color: HighlightColor, text: String = ""): Note? {
+        val range = selection ?: return null
+        val note = Note(
+            id = UUID.randomUUID().toString(),
+            chapter = range.chapter,
+            start = range.start,
+            end = range.end,
+            quote = textOf(range).take(2000),
+            text = text.trim(),
+            color = color,
+            label = book.chapterTitle(range.chapter),
+            createdAt = System.currentTimeMillis(),
+        )
+        notes = sortNotes(notes + note)
+        onNotesChanged(notes)
+        clearSelection()
+        return note
+    }
+
+    /** Chạm vào một đoạn đã đánh dấu: chọn nó để sửa màu, ghi chú hoặc xoá. */
+    fun selectNote(note: Note) {
+        selectionAnchor = null
+        selecting = false
+        activeNote = note
+        selection = TextHighlight(note.chapter, note.start, note.end)
+    }
+
+    fun updateNote(note: Note) {
+        notes = sortNotes(notes.map { if (it.id == note.id) note else it })
+        onNotesChanged(notes)
+        if (activeNote?.id == note.id) activeNote = note
+    }
+
+    fun removeNote(note: Note) {
+        notes = notes.filter { it.id != note.id }
+        onNotesChanged(notes)
+        if (activeNote?.id == note.id) clearSelection()
+    }
+
+    /** Ghi chú chứa vị trí [offset] của chương đang đọc. */
+    fun noteAt(offset: Int): Note? =
+        notes.lastOrNull { it.chapter == chapter && offset >= it.start && offset < it.end }
+
+    /** Mở tới đúng đoạn có ghi chú và tô sáng đoạn đó. */
+    fun goToNote(note: Note) {
+        goTo(ReadingPosition(note.chapter, note.start))
+        searchHighlight = TextHighlight(note.chapter, note.start, note.end)
+    }
+
+    private fun sortNotes(list: List<Note>) = list.sortedWith(compareBy<Note>({ it.chapter }, { it.start }))
+
     // ---------------------------------------------------------------- tìm kiếm
 
     fun search(query: String) {
@@ -323,8 +441,8 @@ class ReaderController(
     }
 
     fun openSearchHit(hit: SearchHit) {
-        searchHighlight = TextHighlight(hit.chapter, hit.start, hit.end)
         goTo(ReadingPosition(hit.chapter, hit.start))
+        searchHighlight = TextHighlight(hit.chapter, hit.start, hit.end)
     }
 
     fun clearSearchHighlight() {

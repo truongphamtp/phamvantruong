@@ -46,6 +46,7 @@ import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
@@ -132,6 +133,7 @@ fun LibraryScreen(
     onAddBooks: () -> Unit,
     onDelete: (BookRecord) -> Unit,
     toolbarSide: ToolbarSide = ToolbarSide.RIGHT,
+    onOpenNotes: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
@@ -163,6 +165,7 @@ fun LibraryScreen(
 
     val actions = listOf(
         RailAction(Icons.Rounded.Search, "Tìm") { runCatching { searchFocus.requestFocus() } },
+        RailAction(Icons.Rounded.EditNote, "Ghi chú") { onOpenNotes() },
         RailAction(Icons.AutoMirrored.Rounded.Sort, "Sắp xếp") { showSort = true },
         if (prefs.view == LibraryView.GRID) {
             RailAction(Icons.AutoMirrored.Rounded.ViewList, "Danh sách") { onPrefsChange(prefs.copy(view = LibraryView.LIST)) }
@@ -376,7 +379,7 @@ private fun BookGrid(
 }
 
 @Composable
-private fun Cover(book: BookRecord, coverLoader: CoverLoader?, modifier: Modifier, radius: Int = 14) {
+internal fun Cover(book: BookRecord, coverLoader: CoverLoader?, modifier: Modifier, radius: Int = 14) {
     val p = LocalHyper.current
     val cover by produceState<ImageBitmap?>(null, book.id, book.coverFileName) {
         value = coverLoader?.load(book)

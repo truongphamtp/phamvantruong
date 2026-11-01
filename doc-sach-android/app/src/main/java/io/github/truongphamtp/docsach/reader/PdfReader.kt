@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.TextFields
@@ -98,12 +100,15 @@ import androidx.compose.ui.unit.sp
 import io.github.truongphamtp.docsach.core.Bookmark
 import io.github.truongphamtp.docsach.core.FoldInfo
 import io.github.truongphamtp.docsach.core.HardwareKey
+import io.github.truongphamtp.docsach.core.HighlightColor
+import io.github.truongphamtp.docsach.core.Note
 import io.github.truongphamtp.docsach.core.ReaderSettings
 import io.github.truongphamtp.docsach.core.ReaderTheme
 import io.github.truongphamtp.docsach.core.ReadingPosition
 import io.github.truongphamtp.docsach.core.ToolbarSide
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
+import io.github.truongphamtp.docsach.library.NoteCard
 import io.github.truongphamtp.docsach.ui.AccentTile
 import io.github.truongphamtp.docsach.ui.FloatingRail
 import io.github.truongphamtp.docsach.ui.GlassGroup
@@ -145,8 +150,42 @@ class PdfReaderController(
     initialBookmarks: List<Bookmark>,
     private val onPositionChanged: (ReadingPosition, Float) -> Unit = { _, _ -> },
     private val onBookmarksChanged: (List<Bookmark>) -> Unit = {},
+    initialNotes: List<Note> = emptyList(),
+    private val onNotesChanged: (List<Note>) -> Unit = {},
 ) {
     val pageCount: Int = source.pageCount
+
+    /** Ghi chú theo trang (PDF không chọn được chữ). */
+    var notes by mutableStateOf(initialNotes.sortedBy { it.chapter })
+        private set
+
+    fun notesOn(page: Int): List<Note> = notes.filter { it.chapter == page }
+
+    fun addPageNote(page: Int, text: String, color: HighlightColor = HighlightColor.YELLOW) {
+        val note = Note(
+            id = UUID.randomUUID().toString(),
+            chapter = page,
+            start = 0,
+            end = 0,
+            quote = "",
+            text = text.trim(),
+            color = color,
+            label = "Trang ${page + 1}",
+            createdAt = System.currentTimeMillis(),
+        )
+        notes = (notes + note).sortedBy { it.chapter }
+        onNotesChanged(notes)
+    }
+
+    fun updateNote(note: Note) {
+        notes = notes.map { if (it.id == note.id) note else it }
+        onNotesChanged(notes)
+    }
+
+    fun removeNote(note: Note) {
+        notes = notes.filter { it.id != note.id }
+        onNotesChanged(notes)
+    }
 
     var page by mutableIntStateOf(initialPage.coerceIn(0, maxOf(0, pageCount - 1)))
         private set
@@ -252,6 +291,8 @@ fun PdfReaderScreen(
     val platform = LocalReaderPlatform.current
     val railOnRight = settings.toolbarSide == ToolbarSide.RIGHT
     val zoom = remember { ZoomState() }
+    /** Trang đang viết ghi chú (nhấn giữ trên trang). */
+    var notePage by remember { mutableStateOf<Int?>(null) }
 
     val chromeVisible = menuVisible || panel != null
     LaunchedEffect(chromeVisible) { platform.setImmersive(!chromeVisible) }
@@ -356,6 +397,13 @@ fun PdfReaderScreen(
                                 },
                                 onSwipe = { dir -> if (dir > 0) controller.next() else controller.previous() },
                                 zoom = zoom,
+                                onLongPress = { pos ->
+                                    val second = controller.pagesPerView == 2 && pos.x > center &&
+                                        controller.firstPageInView + 1 < controller.pageCount
+                                    notePage = controller.firstPageInView + if (second) 1 else 0
+                                    menuVisible = false
+                                    true
+                                },
                             )
                             .graphicsLayer {
                                 scaleX = zoom.scale
@@ -371,14 +419,14 @@ fun PdfReaderScreen(
                         if (controller.pagesPerView == 2) {
                             Row(Modifier.fillMaxSize()) {
                                 val leftWidth = with(density) { (center - gutter / 2).toDp() }
-                                PdfPage(controller, first, Alignment.CenterEnd, invert, zoom.isZoomed, Modifier.width(leftWidth).fillMaxHeight())
+                                PdfPage(controller, first, Alignment.CenterEnd, invert, zoom.isZoomed, Modifier.width(leftWidth).fillMaxHeight()) { notePage = it }
                                 Spacer(Modifier.width(with(density) { gutter.toDp() }))
                                 if (first + 1 < controller.pageCount) {
-                                    PdfPage(controller, first + 1, Alignment.CenterStart, invert, zoom.isZoomed, Modifier.weight(1f).fillMaxHeight())
+                                    PdfPage(controller, first + 1, Alignment.CenterStart, invert, zoom.isZoomed, Modifier.weight(1f).fillMaxHeight()) { notePage = it }
                                 }
                             }
                         } else {
-                            PdfPage(controller, first, Alignment.Center, invert, zoom.isZoomed, Modifier.fillMaxSize().padding(horizontal = 4.dp))
+                            PdfPage(controller, first, Alignment.Center, invert, zoom.isZoomed, Modifier.fillMaxSize().padding(horizontal = 4.dp)) { notePage = it }
                         }
                     }
                     Row(
@@ -443,10 +491,28 @@ fun PdfReaderScreen(
                     }
                 }
             }
+            notePage?.let { page ->
+                val existing = controller.notesOn(page).firstOrNull()
+                NoteEditorDialog(
+                    quote = "Trang ${page + 1}",
+                    initialText = existing?.text.orEmpty(),
+                    editing = existing != null,
+                    onDismiss = { notePage = null },
+                    onSave = { text ->
+                        notePage = null
+                        when {
+                            existing != null && text.isBlank() -> controller.removeNote(existing)
+                            existing != null -> controller.updateNote(existing.copy(text = text.trim()))
+                            text.isNotBlank() -> controller.addPageNote(page, text)
+                        }
+                    },
+                )
+            }
+
             SidePanel(
                 visible = panel != null,
                 onRight = railOnRight,
-                title = if ((panel ?: lastPanel) == PdfPanel.PAGES) "Trang & dấu trang" else "Hiển thị",
+                title = if ((panel ?: lastPanel) == PdfPanel.PAGES) "Trang, dấu trang, ghi chú" else "Hiển thị",
                 onDismiss = { panel = null },
             ) {
                 when (panel ?: lastPanel) {
@@ -470,6 +536,7 @@ private fun PdfPage(
     invert: Boolean,
     sharp: Boolean,
     modifier: Modifier,
+    onOpenNotes: (Int) -> Unit,
 ) {
     BoxWithConstraints(modifier) {
         val density = LocalDensity.current
@@ -500,6 +567,23 @@ private fun PdfPage(
                     contentScale = ContentScale.FillBounds,
                     colorFilter = if (invert) InvertColors else null,
                 )
+            }
+            val count = controller.notesOn(index).size
+            if (count > 0) {
+                // Huy hiệu ghi chú ở góc trang; chạm để xem/sửa.
+                Row(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .glass(CircleShape, strong = true, elevation = 4.dp)
+                        .clickable { onOpenNotes(index) }
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.EditNote, contentDescription = "Ghi chú", tint = LocalHyper.current.accent, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("$count", color = LocalHyper.current.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
@@ -584,6 +668,20 @@ private fun PdfPagesPanel(controller: PdfReaderController, onNavigate: () -> Uni
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        if (controller.notes.isNotEmpty()) {
+            item(key = "tieu-de-ghi-chu") { SectionLabel("Ghi chú (nhấn giữ trên trang để thêm)") }
+            items(controller.notes, key = { "note-" + it.id }) { note ->
+                NoteCard(
+                    note = note,
+                    onClick = {
+                        controller.goTo(note.chapter)
+                        onNavigate()
+                    },
+                    onDelete = { controller.removeNote(note) },
+                )
+            }
+            item(key = "tieu-de-dau-trang") { SectionLabel("Dấu trang") }
+        }
         items(controller.bookmarks, key = { it.id }) { mark ->
             GlassGroup(Modifier.clickable {
                 controller.goTo(mark.position.chapter)

@@ -4,6 +4,8 @@ import android.util.Log
 import io.github.truongphamtp.docsach.core.BookFormat
 import io.github.truongphamtp.docsach.core.BookRecord
 import io.github.truongphamtp.docsach.core.Bookmark
+import io.github.truongphamtp.docsach.core.HighlightColor
+import io.github.truongphamtp.docsach.core.Note
 import io.github.truongphamtp.docsach.core.ReadingPosition
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +56,8 @@ class LibraryStore(private val file: File, scope: CoroutineScope) {
     }
 
     fun updateBookmarks(id: String, bookmarks: List<Bookmark>) = updateBook(id) { it.copy(bookmarks = bookmarks) }
+
+    fun updateNotes(id: String, notes: List<Note>) = updateBook(id) { it.copy(notes = notes) }
 
     private fun change(transform: (List<BookRecord>) -> List<BookRecord>) {
         _books.update(transform)
@@ -107,6 +111,34 @@ class LibraryStore(private val file: File, scope: CoroutineScope) {
             put("chapter", position.chapter)
             put("offset", position.offset)
             put("bookmarks", JSONArray().apply { bookmarks.forEach { put(it.toJson()) } })
+            put("notes", JSONArray().apply { notes.forEach { put(it.toJson()) } })
+        }
+
+        fun Note.toJson(): JSONObject = JSONObject().apply {
+            put("id", id)
+            put("chapter", chapter)
+            put("start", start)
+            put("end", end)
+            put("quote", quote)
+            put("text", text)
+            put("color", color.name)
+            put("label", label)
+            put("createdAt", createdAt)
+        }
+
+        fun noteFromJson(m: JSONObject): Note? {
+            val id = m.optString("id").ifEmpty { return null }
+            return Note(
+                id = id,
+                chapter = m.optInt("chapter"),
+                start = m.optInt("start"),
+                end = m.optInt("end"),
+                quote = m.optString("quote"),
+                text = m.optString("text"),
+                color = HighlightColor.entries.firstOrNull { it.name == m.optString("color") } ?: HighlightColor.YELLOW,
+                label = m.optString("label"),
+                createdAt = m.optLong("createdAt"),
+            )
         }
 
         fun Bookmark.toJson(): JSONObject = JSONObject().apply {
@@ -122,6 +154,7 @@ class LibraryStore(private val file: File, scope: CoroutineScope) {
             val format = BookFormat.entries.firstOrNull { it.name == o.optString("format") } ?: return null
             val id = o.optString("id").ifEmpty { return null }
             val marks = o.optJSONArray("bookmarks")
+            val notes = o.optJSONArray("notes")
             return BookRecord(
                 id = id,
                 title = o.optString("title"),
@@ -145,6 +178,9 @@ class LibraryStore(private val file: File, scope: CoroutineScope) {
                             createdAt = m.optLong("createdAt"),
                         )
                     }
+                },
+                notes = if (notes == null) emptyList() else (0 until notes.length()).mapNotNull { i ->
+                    notes.optJSONObject(i)?.let { noteFromJson(it) }
                 },
             )
         }

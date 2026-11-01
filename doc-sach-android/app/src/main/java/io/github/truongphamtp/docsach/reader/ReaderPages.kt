@@ -34,11 +34,16 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import io.github.truongphamtp.docsach.core.HighlightColor
+import io.github.truongphamtp.docsach.core.Note
 import io.github.truongphamtp.docsach.core.PageLayout
 import io.github.truongphamtp.docsach.core.ReaderSettings
+import io.github.truongphamtp.docsach.format.ChapterPages
 import io.github.truongphamtp.docsach.format.ImagePiece
 import io.github.truongphamtp.docsach.format.PageModel
 import io.github.truongphamtp.docsach.format.TextPiece
+import io.github.truongphamtp.docsach.ui.LocalHyper
 import io.github.truongphamtp.docsach.ui.ReaderColors
 import kotlin.math.roundToInt
 
@@ -165,10 +170,13 @@ private fun PageSpread(controller: ReaderController, target: PageTarget, geometr
         }
         val highlights = listOfNotNull(controller.searchHighlight, controller.speechHighlight)
             .filter { it.chapter == target.chapter }
+        val notes = controller.notes.filter { it.chapter == target.chapter }
+        val selection = controller.selection?.takeIf { it.chapter == target.chapter }
+        val marker = LocalHyper.current.accent
         Canvas(Modifier.fillMaxSize()) {
             pages.forEachIndexed { i, page ->
                 val left = geometry.pageLefts.getOrElse(i) { geometry.pageLefts.first() }
-                drawPage(page, left, geometry.pageTop, colors, highlights, bitmaps)
+                drawPage(page, left, geometry.pageTop, colors, highlights, bitmaps, notes, selection, marker)
             }
         }
     }
@@ -181,6 +189,9 @@ private fun DrawScope.drawPage(
     colors: ReaderColors,
     highlights: List<TextHighlight>,
     bitmaps: Map<String, ImageBitmap>,
+    notes: List<Note>,
+    selection: TextHighlight?,
+    marker: Color,
 ) {
     for (piece in page.pieces) {
         when (piece) {
@@ -188,14 +199,35 @@ private fun DrawScope.drawPage(
                 val layout = (piece.text as LayoutText).layout
                 val x = left + piece.x
                 val y = top + piece.y
+                val blockStart = piece.block.start
+                val blockEnd = piece.block.start + piece.block.text.length
+                fun local(start: Int, end: Int): IntRange? {
+                    val s = maxOf(start, blockStart) - blockStart
+                    val e = minOf(end, blockEnd) - blockStart
+                    return if (e > s) s until e else null
+                }
                 clipRect(left = x - 12f, top = y, right = x + layout.size.width + 12f, bottom = y + piece.height) {
                     translate(left = x, top = y - piece.top) {
+                        for (note in notes) {
+                            val r = local(note.start, note.end) ?: continue
+                            drawPath(layout.getPathForRange(r.first, r.last + 1), color = highlightFill(note.color, colors.dark))
+                        }
                         for (h in highlights) {
-                            val s = maxOf(h.start, piece.block.start) - piece.block.start
-                            val e = minOf(h.end, piece.block.start + piece.block.text.length) - piece.block.start
-                            if (e > s) drawPath(layout.getPathForRange(s, e), color = colors.selection)
+                            val r = local(h.start, h.end) ?: continue
+                            drawPath(layout.getPathForRange(r.first, r.last + 1), color = colors.selection)
+                        }
+                        if (selection != null) {
+                            local(selection.start, selection.end)?.let { r ->
+                                drawPath(layout.getPathForRange(r.first, r.last + 1), color = marker.copy(alpha = 0.28f))
+                            }
                         }
                         drawText(layout, color = colors.text)
+                        // Dấu chấm nhỏ ở cuối đoạn có ghi chú (giống biểu tượng ghi chú của Kindle).
+                        for (note in notes) {
+                            if (note.text.isBlank() || note.end - 1 < blockStart || note.end - 1 >= blockEnd) continue
+                            val box = layout.getBoundingBox(note.end - 1 - blockStart)
+                            drawCircle(marker, radius = 4.dp.toPx(), center = Offset(box.right + 5.dp.toPx(), box.top + 3.dp.toPx()))
+                        }
                     }
                 }
             }
@@ -222,4 +254,65 @@ private fun DrawScope.drawPage(
             }
         }
     }
+}
+
+
+/** Màu tô của đoạn đánh dấu. */
+fun highlightFill(color: HighlightColor, dark: Boolean): Color = when (color) {
+    HighlightColor.YELLOW -> if (dark) Color(0x66C9A227) else Color(0x80FFD84D)
+    HighlightColor.GREEN -> if (dark) Color(0x5C3F9E5A) else Color(0x6670D68A)
+    HighlightColor.BLUE -> if (dark) Color(0x664C7FD1) else Color(0x5C7FB2FF)
+    HighlightColor.PINK -> if (dark) Color(0x66C2507E) else Color(0x5CFF8DB9)
+}
+
+/** Vị trí ký tự (trong chương) và từ nằm dưới điểm chạm. */
+data class TextHit(val offset: Int, val word: IntRange)
+
+/**
+ * Tìm chữ dưới điểm [point] (toạ độ trong vùng đọc). Với [nearest] = true, nếu điểm nằm giữa các đoạn
+ * thì lấy dòng gần nhất (dùng khi đang kéo để chọn).
+ */
+fun hitText(pages: ChapterPages, geometry: ReaderGeometry, view: Int, point: Offset, nearest: Boolean = false): TextHit? {
+    val first = view * geometry.pagesPerView
+    var best: Pair<Float, TextHit>? = null
+    for (i in 0 until geometry.pagesPerView) {
+        val page = pages.pages.getOrNull(first + i) ?: continue
+        val left = geometry.pageLefts.getOrElse(i) { geometry.pageLefts.first() }
+        val insidePage = point.x >= left - 24f && point.x <= left + geometry.pageWidth + 24f
+        if (!insidePage && !nearest) continue
+        for (piece in page.pieces) {
+            if (piece !is TextPiece<*>) continue
+            val layout = (piece.text as LayoutText).layout
+            val top = geometry.pageTop + piece.y
+            val bottom = top + piece.height
+            val dy = when {
+                point.y < top -> top - point.y
+                point.y > bottom -> point.y - bottom
+                else -> 0f
+            }
+            val dx = when {
+                point.x < left -> left - point.x
+                point.x > left + geometry.pageWidth -> point.x - left - geometry.pageWidth
+                else -> 0f
+            }
+            val distance = dy + dx
+            if (distance > 0f && !nearest) continue
+            if (best != null && best.first <= distance) continue
+            val localY = (point.y.coerceIn(top, bottom - 1f) - top) + piece.top
+            val localX = (point.x - left - piece.x).coerceIn(0f, layout.size.width.toFloat())
+            val length = piece.block.text.length
+            if (length == 0) continue
+            val offset = layout.getOffsetForPosition(Offset(localX, localY)).coerceIn(0, length - 1)
+            val wordRange = layout.getWordBoundary(offset)
+            val wordStart = wordRange.start.coerceIn(0, length - 1)
+            val wordEnd = wordRange.end.coerceIn(wordStart + 1, length)
+            val hit = TextHit(
+                offset = piece.block.start + offset,
+                word = (piece.block.start + wordStart) until (piece.block.start + wordEnd),
+            )
+            best = distance to hit
+            if (distance == 0f) return hit
+        }
+    }
+    return best?.second
 }
