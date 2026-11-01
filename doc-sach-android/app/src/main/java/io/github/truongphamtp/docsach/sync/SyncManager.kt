@@ -6,8 +6,6 @@ import android.net.NetworkCapabilities
 import android.os.SystemClock
 import android.util.Log
 import android.webkit.CookieManager
-import io.github.truongphamtp.docsach.core.BookRecord
-import io.github.truongphamtp.docsach.core.LibraryState
 import io.github.truongphamtp.docsach.core.PositionOffer
 import io.github.truongphamtp.docsach.core.SyncUiState
 import io.github.truongphamtp.docsach.data.BookImporter
@@ -22,13 +20,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -45,21 +40,7 @@ class SyncManager(
     private val prefs = context.getSharedPreferences("dong_bo", Context.MODE_PRIVATE)
     private val auth = OneDriveAuth(TokenVault(context.getSharedPreferences("dong_bo_token", Context.MODE_PRIVATE)), prefs, builtInClientId)
 
-    private val localLibrary = object : LocalLibrary {
-        override suspend fun snapshot(): LibraryState = withContext(Dispatchers.Main) { library.snapshot() }
-
-        override suspend fun apply(merged: LibraryState, keepLocal: Set<String>, now: Long): List<BookRecord> =
-            withContext(Dispatchers.Main) { library.applySync(merged, keepLocal, now) }
-
-        override fun fileOf(book: BookRecord): File = importer.fileOf(book)
-
-        override fun newTempFile(): File = File(context.cacheDir, "tai-ve-${UUID.randomUUID()}.tmp")
-
-        override suspend fun adopt(downloaded: File, remote: BookRecord): BookRecord? =
-            withContext(Dispatchers.IO) { importer.adoptDownloaded(downloaded, remote) }
-
-        override suspend fun deleteFiles(book: BookRecord) = withContext(Dispatchers.IO) { importer.deleteFiles(book) }
-    }
+    private val localLibrary = AndroidLocalLibrary(context, library, importer)
 
     private val engine = SyncEngine(GraphClient(auth), localLibrary)
 

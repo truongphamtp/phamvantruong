@@ -1,7 +1,7 @@
 # Đọc Sách — ứng dụng đọc sách cho Android
 
-Ứng dụng đọc sách điện tử chạy hoàn toàn trên máy (không cần mạng; muốn đồng bộ giữa các máy thì đăng nhập
-OneDrive của chính bạn). Trang đọc theo phong cách máy đọc sách Kindle; giao diện theo phong cách **"Liquid Glass"
+Ứng dụng đọc sách điện tử chạy hoàn toàn trên máy (không cần mạng; đồng bộ giữa điện thoại và máy tính bảng
+qua Wi‑Fi, không cần tài khoản). Trang đọc theo phong cách máy đọc sách Kindle; giao diện theo phong cách **"Liquid Glass"
 của HyperOS 4** (kính mờ, viền sáng, bo góc lớn, nền xanh loang); tối ưu cho màn hình gập **Xiaomi Mix Fold 2** và
 **máy tính bảng 11,5"**; thanh công cụ nằm **bên phải** cho tay phải dễ thao tác.
 
@@ -21,8 +21,8 @@ của HyperOS 4** (kính mờ, viền sáng, bo góc lớn, nền xanh loang); t
   trượt mượt khi sắp xếp lại, mở sách "phóng ra" từ thư viện.
 - **Máy tính bảng** (vd. 11,5" 2456×1600): nằm ngang hiện 2 trang, dựng đứng hiện 1 trang; xoay máy vẫn giữ chỗ
   đang đọc. Thư viện, sổ ghi chú tự chia cột theo bề rộng màn hình.
-- **Đồng bộ qua OneDrive** của chính bạn: danh sách sách, tệp sách, vị trí đọc, dấu trang, ghi chú giữa điện thoại
-  và máy tính bảng (xem mục bên dưới).
+- **Đồng bộ qua Wi‑Fi** giữa điện thoại và máy tính bảng — không cần tài khoản: danh sách sách, tệp sách, vị trí
+  đọc, dấu trang, ghi chú (xem mục bên dưới). Có thêm đồng bộ qua OneDrive (nâng cao).
 - Giao diện kính mờ kiểu HyperOS 4: thanh công cụ, bảng cài đặt, hộp thoại đều là "tấm kính" nổi làm mờ nội dung
   phía sau (Android 12 trở lên), công tắc/thanh trượt/nút chọn kiểu HyperOS, chế độ sáng và tối theo hệ thống.
 - Tuỳ chỉnh: 4 màu nền (Trắng, Giấy ngà, Xanh dịu, Đen), cỡ chữ, phông có chân/không chân, giãn dòng, lề,
@@ -49,7 +49,31 @@ Mỗi lần mã nguồn thay đổi, GitHub Actions tự đóng gói tệp cài 
 
 Yêu cầu Android 8.0 trở lên.
 
-## Đồng bộ OneDrive
+## Đồng bộ qua Wi‑Fi (không cần tài khoản)
+
+**Ghép đôi một lần:**
+
+1. Trên cả hai máy: ở **Thư viện**, bấm nút **Đồng bộ** trên thanh công cụ → **Ghép đôi máy mới**.
+   Mỗi máy hiện một mã 6 số.
+2. Trên một máy, chọn tên máy kia trong danh sách *"Hoặc nhập mã của máy kia vào đây"* rồi nhập mã đang hiện
+   trên máy kia. Xong!
+
+Nếu danh sách không hiện máy kia (một số mạng ở trường, quán cà phê chặn các máy nói chuyện với nhau): bật
+**điểm phát Wi‑Fi** trên điện thoại cho máy tính bảng kết nối vào, hoặc bấm *"Không thấy máy kia? Nhập địa chỉ"*
+và gõ địa chỉ hiện trên máy kia (dạng `192.168.1.5:47123`).
+
+**Sau đó:** mở ứng dụng trên cả hai máy, dùng chung Wi‑Fi là tự đồng bộ — ngay khi thấy nhau, vài giây sau khi
+thêm ghi chú/dấu trang, và khi lật trang. Đồng bộ danh sách sách, **tệp sách**, vị trí đang đọc, dấu trang, ghi chú,
+sách đã xoá. Đang mở một cuốn mà máy kia đã đọc xa hơn thì ứng dụng hỏi *"Đọc tiếp từ máy khác?"*.
+
+- Hai máy cần **mở ứng dụng cùng lúc** (không cần mở cùng cuốn sách). Đọc trên điện thoại ở ngoài rồi về nhà đọc
+  trên máy tính bảng: mở ứng dụng trên cả hai máy một lát là tiến độ khớp nhau.
+- Dữ liệu đi thẳng giữa hai máy trong mạng nhà bạn, không qua Internet. Lúc ghép đôi, hai máy tạo một khoá
+  chung (ECDH + mã 6 số); mọi yêu cầu sau đó đều được ký, dữ liệu thư viện được mã hoá AES‑GCM. Máy chưa ghép
+  đôi không đọc được gì.
+- Cài đặt hiển thị (cỡ chữ, màu nền…) giữ riêng từng máy.
+
+## Đồng bộ OneDrive (nâng cao)
 
 Ứng dụng lưu dữ liệu đồng bộ trong **OneDrive của chính bạn**, ở thư mục riêng `Ứng dụng › <tên ứng dụng>`
 (ứng dụng chỉ có quyền với thư mục này, không đọc được các tệp khác). Microsoft yêu cầu mỗi ứng dụng phải có
@@ -132,8 +156,9 @@ Google Play, hãy tạo khoá riêng và giữ bí mật.
 | `library/` | Màn hình thư viện |
 | `ui/` | Phong cách HyperOS 4 (kính mờ, công tắc, thanh trượt...), thanh công cụ bên phải, bảng trượt, cử chỉ lật trang |
 | `data/` | Lưu thư viện, cài đặt, nhập sách |
-| `sync/` | Đồng bộ OneDrive: đăng nhập Microsoft (OAuth + PKCE), gọi Microsoft Graph, gộp dữ liệu giữa các máy |
+| `sync/` | Đồng bộ: lõi gộp dữ liệu giữa các máy; `sync/lan/` qua Wi‑Fi (ghép đôi, máy chủ nhỏ, mDNS); OneDrive (OAuth + PKCE, Microsoft Graph) |
 | `platform/` | Phần riêng của Android: PDF, giọng đọc, ảnh, bản lề màn hình gập |
 
 Kiểm thử: `./gradlew testDebugUnitTest` (đọc EPUB/TXT, EPUB kiểu Google Docs/Calibre, dàn trang, tìm kiếm;
-gộp dữ liệu đồng bộ; hai "máy" đồng bộ qua OneDrive giả lập; gọi Microsoft Graph với máy chủ giả lập).
+gộp dữ liệu đồng bộ; hai "máy" đồng bộ qua Wi‑Fi và qua OneDrive giả lập; gọi Microsoft Graph với máy chủ giả lập;
+lật trang theo từng khung hình).

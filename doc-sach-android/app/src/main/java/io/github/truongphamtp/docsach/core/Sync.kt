@@ -160,6 +160,55 @@ object SyncMerge {
         return LibraryState(books, combined.deletedBooks) to current.books.filter { it.fingerprint !in kept }
     }
 
+    /**
+     * Sách đang mở trên máy này ([open]) mà bản gộp có vị trí đọc mới hơn (máy khác đã đọc xa hơn):
+     * trả về gợi ý "đọc tiếp từ máy khác". Bỏ qua gợi ý người dùng đã trả lời ([answered]).
+     */
+    fun offers(merged: LibraryState, current: LibraryState, open: Set<String>, answered: Map<String, Long>): Map<String, PositionOffer> {
+        val out = HashMap<String, PositionOffer>()
+        for (fingerprint in open) {
+            val here = current.books.firstOrNull { it.fingerprint == fingerprint } ?: continue
+            val best = merged.books.firstOrNull { it.fingerprint == fingerprint } ?: continue
+            val at = positionTime(best)
+            if (best.position != here.position && at > positionTime(here) && at > (answered[fingerprint] ?: 0L)) {
+                out[fingerprint] = PositionOffer(fingerprint, best.position, best.progress, at)
+            }
+        }
+        return out
+    }
+
     /** Tên tệp sách trên OneDrive (trong thư mục "sach"). */
     fun remoteFileName(book: BookRecord): String = "${book.fingerprint}.${book.format.name.lowercase()}"
 }
+
+/** Một máy đã ghép đôi, hiển thị trong bảng Đồng bộ. */
+data class LanPeerUi(
+    val id: String,
+    val name: String,
+    /** Đang thấy máy này trong cùng mạng Wi‑Fi (ứng dụng đang mở trên máy đó). */
+    val online: Boolean = false,
+    val lastSyncAt: Long = 0L,
+    val syncing: Boolean = false,
+)
+
+/** Máy ở gần đang bật "Ghép đôi máy mới". */
+data class NearbyDeviceUi(val id: String, val name: String)
+
+/** Trạng thái đồng bộ qua Wi‑Fi hiển thị trên giao diện. */
+data class LanUiState(
+    val deviceName: String = "",
+    /** Máy này đang sẵn sàng đồng bộ (ứng dụng mở, có mạng). */
+    val active: Boolean = false,
+    /** Địa chỉ của máy này trong mạng, ví dụ "192.168.1.5:47123" (dùng khi phải nhập tay). */
+    val address: String? = null,
+    val peers: List<LanPeerUi> = emptyList(),
+    /** Mã 6 số khi máy này đang bật ghép đôi. */
+    val pairingCode: String? = null,
+    val nearby: List<NearbyDeviceUi> = emptyList(),
+    val pairingBusy: Boolean = false,
+    val syncing: Boolean = false,
+    val progress: String? = null,
+    val summary: String? = null,
+    val lastError: String? = null,
+    val lastSyncAt: Long = 0L,
+)

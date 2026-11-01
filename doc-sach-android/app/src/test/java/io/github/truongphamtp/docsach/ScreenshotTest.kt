@@ -32,8 +32,12 @@ import io.github.truongphamtp.docsach.format.BookContent
 import io.github.truongphamtp.docsach.format.EpubArchive
 import io.github.truongphamtp.docsach.format.EpubParser
 import io.github.truongphamtp.docsach.format.TxtParser
+import io.github.truongphamtp.docsach.core.LanPeerUi
+import io.github.truongphamtp.docsach.core.LanUiState
+import io.github.truongphamtp.docsach.core.NearbyDeviceUi
 import io.github.truongphamtp.docsach.core.PositionOffer
 import io.github.truongphamtp.docsach.core.SyncUiState
+import io.github.truongphamtp.docsach.library.LanActions
 import io.github.truongphamtp.docsach.library.LibraryScreen
 import io.github.truongphamtp.docsach.library.NotesScreen
 import io.github.truongphamtp.docsach.library.SyncActions
@@ -239,8 +243,9 @@ class ScreenshotTest {
     )
 
     private val noSyncActions = SyncActions({}, {}, {}, {}, {}, {}, {})
+    private val noLanActions = LanActions({}, {}, { _, _ -> }, { _, _ -> }, {}, {})
 
-    private fun shootLibrary(name: String, sync: SyncUiState? = null, showAccount: Boolean = false) {
+    private fun shootLibrary(name: String, sync: SyncUiState? = null, showAccount: Boolean = false, lan: LanUiState? = null) {
         compose.setContent {
             NoBlur {
                 LibraryScreen(
@@ -256,6 +261,8 @@ class ScreenshotTest {
                     onDelete = {},
                     sync = sync,
                     syncActions = if (sync != null) noSyncActions else null,
+                    lan = lan,
+                    lanActions = if (lan != null) noLanActions else null,
                     initialShowAccount = showAccount,
                 )
             }
@@ -291,7 +298,7 @@ class ScreenshotTest {
 
     @Test
     @Config(qualifiers = "w1228dp-h800dp-xhdpi")
-    fun tabletLandscapeLibrary() = shootLibrary("14-tablet-ngang-thu-vien", signedIn())
+    fun tabletLandscapeLibrary() = shootLibrary("14-tablet-ngang-thu-vien", signedIn(), lan = lanPaired())
 
     @Test
     @Config(qualifiers = "w800dp-h1228dp-xhdpi")
@@ -303,13 +310,36 @@ class ScreenshotTest {
 
     // ---- Tài khoản OneDrive
 
+    private fun lanPaired() = LanUiState(
+        deviceName = "Xiaomi MIX Fold 2",
+        active = true,
+        address = "192.168.1.23:47123",
+        peers = listOf(
+            LanPeerUi("p1", "Xiaomi Pad", online = true, lastSyncAt = System.currentTimeMillis() - 3 * 60_000L),
+            LanPeerUi("p2", "Máy tính bảng ở trường", online = false, lastSyncAt = System.currentTimeMillis() - 26 * 60 * 60_000L),
+        ),
+        summary = "Với Xiaomi Pad: đã nhận 1 cuốn.",
+        lastSyncAt = System.currentTimeMillis() - 3 * 60_000L,
+    )
+
     @Test
     @Config(qualifiers = "w766dp-h864dp-400dpi")
-    fun accountSignedIn() = shootLibrary("17-dong-bo-da-dang-nhap", signedIn(), showAccount = true)
+    fun syncPanelPaired() = shootLibrary("17-dong-bo-wifi", SyncUiState(), showAccount = true, lan = lanPaired())
 
     @Test
     @Config(qualifiers = "w393dp-h916dp-440dpi")
-    fun accountNotConfigured() = shootLibrary("18-dong-bo-chua-co-ma", SyncUiState(), showAccount = true)
+    fun syncPanelPairing() = shootLibrary(
+        "18-ghep-doi-wifi",
+        SyncUiState(),
+        showAccount = true,
+        lan = LanUiState(
+            deviceName = "Xiaomi MIX Fold 2",
+            active = true,
+            address = "192.168.1.23:47123",
+            pairingCode = "482913",
+            nearby = listOf(NearbyDeviceUi("p3", "Xiaomi Pad")),
+        ),
+    )
 
     @Test
     @Config(qualifiers = "w393dp-h916dp-440dpi")

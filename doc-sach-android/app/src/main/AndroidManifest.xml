@@ -4,6 +4,8 @@
     <!-- Đồng bộ qua OneDrive: cần mạng, và biết đang dùng Wi‑Fi hay dữ liệu di động. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Đồng bộ qua Wi‑Fi: tìm máy khác trong cùng mạng (mDNS). -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <!-- Cần để tìm bộ chuyển văn bản thành giọng nói (Android 11 trở lên). -->
     <queries>
@@ -20,7 +22,12 @@
         android:label="@string/app_name"
         android:resizeableActivity="true"
         android:supportsRtl="true"
-        android:theme="@style/Theme.DocSach">
+        android:theme="@style/Theme.DocSach"
+        android:usesCleartextTraffic="true">
+        <!--
+            usesCleartextTraffic: hai máy trong cùng Wi‑Fi nói chuyện qua HTTP nội bộ; dữ liệu thư viện
+            vẫn được mã hoá AES-GCM bằng khoá chung tạo lúc ghép đôi. Kết nối Internet (OneDrive) luôn dùng HTTPS.
+        -->
 
         <!--
             configChanges: khi gập/mở máy (Mix Fold 2) kích thước và mật độ màn hình đổi,

@@ -79,15 +79,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        // Quay lại ứng dụng: lấy thay đổi từ máy khác.
-        (application as DocSachApp).sync.requestSync(0L)
+        // Quay lại ứng dụng: lấy thay đổi từ máy khác, bật đồng bộ qua Wi‑Fi.
+        val app = application as DocSachApp
+        app.sync.requestSync(0L)
+        app.lan.onForeground()
     }
 
     override fun onStop() {
         super.onStop()
         val app = application as DocSachApp
         app.appScope.launch(Dispatchers.IO) { app.library.saveNow() }
-        // Rời ứng dụng: đẩy vị trí đọc, ghi chú lên OneDrive ngay.
+        // Rời ứng dụng: đẩy vị trí đọc, ghi chú sang OneDrive/máy kia ngay.
         app.sync.requestSync(0L)
+        app.lan.onBackground()
     }
 }

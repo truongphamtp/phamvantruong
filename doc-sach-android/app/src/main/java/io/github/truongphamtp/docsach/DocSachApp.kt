@@ -6,6 +6,7 @@ import io.github.truongphamtp.docsach.data.LibraryStore
 import io.github.truongphamtp.docsach.data.SettingsStore
 import io.github.truongphamtp.docsach.platform.AndroidCoverLoader
 import io.github.truongphamtp.docsach.sync.SyncManager
+import io.github.truongphamtp.docsach.sync.lan.LanSyncManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,6 +25,8 @@ class DocSachApp : Application() {
         private set
     lateinit var sync: SyncManager
         private set
+    lateinit var lan: LanSyncManager
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -35,5 +38,8 @@ class DocSachApp : Application() {
         // Đồng bộ qua OneDrive của chính bạn (chỉ chạy khi đã đăng nhập).
         sync = SyncManager(this, library, importer, BuildConfig.ONEDRIVE_CLIENT_ID)
         sync.start()
+        // Đồng bộ trực tiếp qua Wi‑Fi giữa các máy đã ghép đôi (không cần tài khoản).
+        lan = LanSyncManager(this, library, importer)
+        lan.start()
     }
 }

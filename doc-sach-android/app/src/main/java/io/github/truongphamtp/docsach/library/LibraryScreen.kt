@@ -93,6 +93,7 @@ import io.github.truongphamtp.docsach.core.BookRecord
 import io.github.truongphamtp.docsach.core.LibraryPrefs
 import io.github.truongphamtp.docsach.core.LibrarySort
 import io.github.truongphamtp.docsach.core.LibraryView
+import io.github.truongphamtp.docsach.core.LanUiState
 import io.github.truongphamtp.docsach.core.SyncUiState
 import io.github.truongphamtp.docsach.core.ToolbarSide
 import io.github.truongphamtp.docsach.format.TextFold
@@ -149,6 +150,8 @@ fun LibraryScreen(
     onOpenNotes: () -> Unit = {},
     sync: SyncUiState? = null,
     syncActions: SyncActions? = null,
+    lan: LanUiState? = null,
+    lanActions: LanActions? = null,
     initialShowAccount: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -183,8 +186,8 @@ fun LibraryScreen(
     LocalBackHandler.current(showAccount) { showAccount = false }
 
     val actions = listOfNotNull(
-        if (sync != null && syncActions != null) {
-            RailAction(syncIcon(sync), "Đồng bộ", selected = showAccount) { showAccount = true }
+        if ((lan != null && lanActions != null) || (sync != null && syncActions != null)) {
+            RailAction(syncRailIcon(lan, sync), "Đồng bộ", selected = showAccount) { showAccount = true }
         } else {
             null
         },
@@ -216,7 +219,7 @@ fun LibraryScreen(
                             ),
                         ),
                 ) {
-                    LibraryHeader(books.size, prefs.sort, busy, sync, onSyncClick = { showAccount = true })
+                    LibraryHeader(books.size, prefs.sort, busy, lan, sync, onSyncClick = { showAccount = true })
                     GlassSearchField(
                         value = query,
                         onValueChange = { query = it },
@@ -239,7 +242,17 @@ fun LibraryScreen(
                 }
                 if (onRight) LibraryRail(actions, onAddBooks)
             }
-            if (sync != null && syncActions != null) {
+            if (lan != null && lanActions != null) {
+                SyncPanel(
+                    visible = showAccount,
+                    onRight = onRight,
+                    lan = lan,
+                    lanActions = lanActions,
+                    cloud = sync,
+                    cloudActions = syncActions,
+                    onDismiss = { showAccount = false },
+                )
+            } else if (sync != null && syncActions != null) {
                 AccountPanel(
                     visible = showAccount,
                     onRight = onRight,
@@ -316,7 +329,7 @@ private fun LibraryRail(actions: List<RailAction>, onAddBooks: () -> Unit) {
 }
 
 @Composable
-private fun LibraryHeader(count: Int, sort: LibrarySort, busy: Boolean, sync: SyncUiState?, onSyncClick: () -> Unit) {
+private fun LibraryHeader(count: Int, sort: LibrarySort, busy: Boolean, lan: LanUiState?, sync: SyncUiState?, onSyncClick: () -> Unit) {
     val p = LocalHyper.current
     Row(
         Modifier.fillMaxWidth().padding(start = 22.dp, end = 16.dp, top = 18.dp, bottom = 10.dp),
@@ -333,7 +346,8 @@ private fun LibraryHeader(count: Int, sort: LibrarySort, busy: Boolean, sync: Sy
         // Viên trạng thái: đang thêm sách / đang đồng bộ / lỗi đồng bộ (chạm để mở bảng tài khoản).
         val status: Pair<String, Boolean>? = when {
             busy -> "Đang thêm sách…" to false
-            sync?.syncing == true -> "Đang đồng bộ…" to false
+            lan?.syncing == true || sync?.syncing == true -> "Đang đồng bộ…" to false
+            lan != null && lan.peers.isNotEmpty() && lan.lastError != null -> "Lỗi đồng bộ" to true
             sync != null && sync.signedIn && sync.lastError != null -> "Lỗi đồng bộ" to true
             else -> null
         }
@@ -347,7 +361,7 @@ private fun LibraryHeader(count: Int, sort: LibrarySort, busy: Boolean, sync: Sy
                 val (text, isError) = current
                 Row(
                     Modifier
-                        .pressable(enabled = sync != null && !busy, onClick = onSyncClick)
+                        .pressable(enabled = (sync != null || lan != null) && !busy, onClick = onSyncClick)
                         .glass(CircleShape)
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,

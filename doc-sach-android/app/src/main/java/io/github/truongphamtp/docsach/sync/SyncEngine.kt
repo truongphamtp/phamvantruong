@@ -217,16 +217,7 @@ class SyncEngine(private val drive: RemoteDrive, private val local: LocalLibrary
         }
 
         // 7. Sách đang mở mà máy khác đã đọc xa hơn: gợi ý chuyển tới.
-        val current = local.snapshot()
-        val offers = HashMap<String, PositionOffer>()
-        for (fingerprint in options.openBooks()) {
-            val here = current.books.firstOrNull { it.fingerprint == fingerprint } ?: continue
-            val best = merged.books.firstOrNull { it.fingerprint == fingerprint } ?: continue
-            val at = SyncMerge.positionTime(best)
-            if (best.position != here.position && at > SyncMerge.positionTime(here) && at > (options.answeredOffers[fingerprint] ?: 0L)) {
-                offers[fingerprint] = PositionOffer(fingerprint, best.position, best.progress, at)
-            }
-        }
+        val offers = SyncMerge.offers(merged, local.snapshot(), options.openBooks(), options.answeredOffers)
 
         return Result(
             uploaded = uploaded,

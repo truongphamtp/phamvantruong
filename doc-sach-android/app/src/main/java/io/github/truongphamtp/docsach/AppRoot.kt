@@ -58,6 +58,7 @@ import io.github.truongphamtp.docsach.format.BookContent
 import io.github.truongphamtp.docsach.format.EpubArchive
 import io.github.truongphamtp.docsach.format.EpubParser
 import io.github.truongphamtp.docsach.format.TxtParser
+import io.github.truongphamtp.docsach.library.LanActions
 import io.github.truongphamtp.docsach.library.LibraryScreen
 import io.github.truongphamtp.docsach.library.NotesScreen
 import io.github.truongphamtp.docsach.library.SyncActions
@@ -192,6 +193,17 @@ private fun LibraryRoute(app: DocSachApp, onOpenNotes: () -> Unit, onOpen: (Book
     val busy by app.importer.busy.collectAsState()
     val message by app.importer.message.collectAsState()
     val sync by app.sync.state.collectAsState()
+    val lan by app.lan.state.collectAsState()
+    val lanActions = remember {
+        LanActions(
+            onStartPairing = app.lan::startPairing,
+            onStopPairing = app.lan::stopPairing,
+            onPair = app.lan::pairWith,
+            onPairAddress = app.lan::pairWithAddress,
+            onSyncNow = app.lan::syncNow,
+            onUnpair = app.lan::unpair,
+        )
+    }
     val syncActions = remember {
         SyncActions(
             onSaveClientId = app.sync::setClientId,
@@ -221,6 +233,8 @@ private fun LibraryRoute(app: DocSachApp, onOpenNotes: () -> Unit, onOpen: (Book
         onOpenNotes = onOpenNotes,
         sync = sync,
         syncActions = syncActions,
+        lan = lan,
+        lanActions = lanActions,
     )
 }
 
@@ -281,10 +295,19 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, jumpNoteId: String?, fo
     // Báo cho phần đồng bộ: sách đang mở (không ghi đè ghi chú đang sửa) và đồng bộ ngay khi đóng.
     DisposableEffect(record.fingerprint) {
         app.sync.bookOpened(record.fingerprint)
-        onDispose { app.sync.bookClosed(record.fingerprint) }
+        app.lan.bookOpened(record.fingerprint)
+        onDispose {
+            app.sync.bookClosed(record.fingerprint)
+            app.lan.bookClosed(record.fingerprint)
+        }
     }
-    val offers by app.sync.offers.collectAsState()
-    val offer = offers[record.fingerprint]
+    val cloudOffers by app.sync.offers.collectAsState()
+    val lanOffers by app.lan.offers.collectAsState()
+    val offer = lanOffers[record.fingerprint] ?: cloudOffers[record.fingerprint]
+    val answer: (PositionOffer) -> Unit = {
+        app.sync.answerOffer(it.fingerprint)
+        app.lan.answerOffer(it.fingerprint)
+    }
 
     when (val s = session) {
         null -> CenterMessage(record.title, loading = true)
@@ -326,9 +349,9 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, jumpNoteId: String?, fo
                     offer = offer,
                     onGo = {
                         controller.goTo(it.position)
-                        app.sync.answerOffer(it.fingerprint)
+                        answer(it)
                     },
-                    onStay = { app.sync.answerOffer(it.fingerprint) },
+                    onStay = answer,
                 )
             }
         }
@@ -352,9 +375,9 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, jumpNoteId: String?, fo
                     offer = offer,
                     onGo = {
                         controller.goTo(it.position.chapter)
-                        app.sync.answerOffer(it.fingerprint)
+                        answer(it)
                     },
-                    onStay = { app.sync.answerOffer(it.fingerprint) },
+                    onStay = answer,
                 )
             }
         }
