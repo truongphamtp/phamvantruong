@@ -160,7 +160,7 @@ class AndroidSpeechEngine(context: Context) : SpeechEngine {
 
     override fun speak(items: List<SpeechItem>, rate: Float, flush: Boolean) {
         ensureEngine()
-        val action = {
+        val action: () -> Unit = {
             val error = failure
             val engine = tts
             if (error != null || engine == null) {

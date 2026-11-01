@@ -54,6 +54,19 @@ android {
         buildConfig = false
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all { test ->
+                // Ảnh chụp giao diện (Robolectric) chỉ chạy khi gọi với -Pscreenshots=true.
+                val screenshots = (project.findProperty("screenshots") ?: "false").toString()
+                test.systemProperty("docsach.screenshots", screenshots)
+                if (screenshots != "true") test.filter.excludeTestsMatching("*ScreenshotTest")
+                test.maxHeapSize = "3g"
+            }
+        }
+    }
+
     lint {
         checkReleaseBuilds = false
         abortOnError = false
@@ -82,4 +95,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

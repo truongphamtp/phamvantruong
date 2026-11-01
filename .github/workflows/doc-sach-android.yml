@@ -35,7 +35,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Kiểm thử và đóng gói APK
-        run: ./gradlew testDebugUnitTest assembleRelease --stacktrace
+        run: ./gradlew testDebugUnitTest assembleRelease
 
       - name: Đặt tên tệp APK
         run: cp app/build/outputs/apk/release/app-release.apk DocSach.apk
@@ -45,6 +45,18 @@ jobs:
         with:
           name: DocSach-apk
           path: doc-sach-android/DocSach.apk
+
+      - name: Chụp ảnh giao diện ở kích thước Mix Fold 2
+        continue-on-error: true
+        run: ./gradlew testDebugUnitTest -Pscreenshots=true --tests "io.github.truongphamtp.docsach.ScreenshotTest"
+
+      - name: Lưu ảnh giao diện
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anh-giao-dien
+          path: doc-sach-android/app/build/screenshots/
+          if-no-files-found: ignore
 
       - name: Cập nhật bản tải về "doc-sach-moi-nhat"
         if: github.event_name != 'pull_request'
