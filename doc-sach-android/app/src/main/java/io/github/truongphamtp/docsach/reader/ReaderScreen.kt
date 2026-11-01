@@ -175,7 +175,7 @@ fun ReaderScreen(
         if (!latestSettings.pageAnimation) {
             commitTurn(dir)
         } else {
-            turnScope.launch { turn.turn(dir, controller.neighbor(dir) != null, commitTurn) }
+            turnScope.launch { turn.turn(dir, { controller.neighbor(dir) != null }, commitTurn) }
         }
     }
     DisposableEffect(controller) {
@@ -447,7 +447,7 @@ private fun ReadingArea(
                         }
                         controller.clearSearchHighlight()
                     },
-                    onSwipe = { dir -> onCommitTurn(dir) },
+                    onSwipe = { dir -> onTurn(dir) },
                     // Kéo trang theo ngón tay, thả ra thì trang trượt tiếp hoặc bật về.
                     onDragStart = if (smooth) {
                         { scope.launch { turn.startDrag(onCommitTurn) } }

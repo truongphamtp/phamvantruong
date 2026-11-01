@@ -3,6 +3,7 @@ package io.github.truongphamtp.docsach.reader
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
 import io.github.truongphamtp.docsach.ui.Motion
@@ -69,13 +70,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -258,6 +259,10 @@ class PdfReaderController(
 
     suspend fun pageSize(index: Int): IntSize = sizes[index] ?: source.pageSize(index).also { sizes[index] = it }
 
+    fun cachedPageSize(index: Int): IntSize? = sizes[index]
+
+    fun cachedBitmap(index: Int, widthPx: Int): ImageBitmap? = bitmaps[(index.toLong() shl 32) or widthPx.toLong()]
+
     suspend fun bitmap(index: Int, widthPx: Int): ImageBitmap? {
         val key = (index.toLong() shl 32) or widthPx.toLong()
         bitmaps[key]?.let { return it }
@@ -307,10 +312,9 @@ fun PdfReaderScreen(
         if (!pageAnimation || zoom.isZoomed) {
             commitTurn(dir)
         } else {
-            val canGo = if (dir > 0) {
-                (controller.viewIndex + 1) * controller.pagesPerView < controller.pageCount
-            } else {
-                controller.viewIndex > 0
+            // Hỏi "còn trang không" sau khi lần lật trước đã hoàn tất (lật liên tục rất nhanh).
+            val canGo = {
+                if (dir > 0) (controller.viewIndex + 1) * controller.pagesPerView < controller.pageCount else controller.viewIndex > 0
             }
             turnScope.launch { turn.turn(dir, canGo, commitTurn) }
         }
@@ -431,7 +435,7 @@ fun PdfReaderScreen(
                                         }
                                     }
                                 },
-                                onSwipe = { dir -> commitTurn(dir) },
+                                onSwipe = { dir -> animatedTurn(dir) },
                                 zoom = zoom,
                                 onLongPress = { pos ->
                                     val second = controller.pagesPerView == 2 && pos.x > center &&
@@ -465,11 +469,31 @@ fun PdfReaderScreen(
                                 transformOrigin = TransformOrigin(0f, 0f)
                             },
                     ) {
-                        Spread(controller.viewIndex, Modifier.graphicsLayer { translationX = turn.offset.value })
                         val dir = turn.direction
-                        val neighbor = controller.viewIndex + dir
-                        if (dir != 0 && neighbor >= 0 && neighbor * controller.pagesPerView < controller.pageCount) {
-                            Spread(neighbor, Modifier.graphicsLayer { translationX = turn.offset.value + dir * turn.width })
+                        val current = controller.viewIndex
+                        val neighbor = current + dir
+                        val shown = if (dir != 0 && neighbor >= 0 && neighbor * controller.pagesPerView < controller.pageCount) {
+                            listOf(current, neighbor)
+                        } else {
+                            listOf(current)
+                        }
+                        for (view in shown) {
+                            // Mỗi cặp trang giữ nguyên ảnh đã vẽ khi đổi từ trang kế bên thành trang hiện tại;
+                            // vị trí tính lúc vẽ nên lật xong không nháy lại trang cũ.
+                            key(view) {
+                                Spread(
+                                    view,
+                                    Modifier
+                                        .graphicsLayer {
+                                            val rel = (view - controller.viewIndex).coerceIn(-1, 1)
+                                            translationX = (turn.offset + rel * turn.width).coerceIn(-turn.width, turn.width)
+                                        }
+                                        .drawWithContent {
+                                            drawContent()
+                                            drawTurnShadow((view - controller.viewIndex).coerceIn(-1, 1), turn.progress)
+                                        },
+                                )
+                            }
                         }
                     }
                     Row(
@@ -584,8 +608,11 @@ private fun PdfPage(
 ) {
     BoxWithConstraints(modifier) {
         val density = LocalDensity.current
-        val pageSize by produceState<IntSize?>(null, index) { value = controller.pageSize(index) }
-        val size = pageSize
+        // Trạng thái gắn với đúng trang: đổi trang thì bắt đầu lại (lấy ngay từ bộ nhớ đệm nếu có),
+        // không hiện tạm ảnh của trang cũ.
+        val pageSizeState = remember(index) { mutableStateOf(controller.cachedPageSize(index)) }
+        LaunchedEffect(index) { pageSizeState.value = controller.pageSize(index) }
+        val size = pageSizeState.value
         if (size == null || size.width <= 0 || size.height <= 0) {
             CircularProgressIndicator(Modifier.align(Alignment.Center).size(32.dp))
             return@BoxWithConstraints
@@ -594,7 +621,12 @@ private fun PdfPage(
         val w = (size.width * scale).roundToInt().coerceAtLeast(1)
         val h = (size.height * scale).roundToInt().coerceAtLeast(1)
         val renderWidth = if (sharp) minOf(w * 2, 4096) else w
-        val bitmap by produceState<ImageBitmap?>(null, index, renderWidth) { value = controller.bitmap(index, renderWidth) }
+        // Gắn với trang [index]: phóng to (đổi độ nét) thì giữ ảnh cũ của chính trang này tới khi ảnh nét hơn xong.
+        val bitmapState = remember(index) { mutableStateOf(controller.cachedBitmap(index, renderWidth)) }
+        LaunchedEffect(index, renderWidth) {
+            controller.bitmap(index, renderWidth)?.let { bitmapState.value = it }
+        }
+        val bitmap = bitmapState.value
         Box(
             Modifier
                 .align(alignment)

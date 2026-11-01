@@ -12,17 +12,22 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clipToBounds
@@ -58,6 +63,7 @@ import io.github.truongphamtp.docsach.format.TextPiece
 import io.github.truongphamtp.docsach.ui.LocalHyper
 import io.github.truongphamtp.docsach.ui.Motion
 import io.github.truongphamtp.docsach.ui.ReaderColors
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -131,10 +137,15 @@ data class PageTarget(val chapter: Int, val view: Int, val serial: Int, val dire
 /**
  * Trạng thái lật trang: trang đang xem trượt theo ngón tay, trang kế bên trượt vào cùng lúc.
  * Thả tay thì lò xo đưa trang tới đích (hoặc bật về nếu kéo chưa đủ).
+ *
+ * Độ trượt là một biến trạng thái thường (không phải Animatable) để lúc lật xong, việc "đổi sang trang
+ * mới" và "đưa độ trượt về 0" xảy ra cùng một lúc, không có khung hình nào lọt vào giữa.
  */
 @Stable
 class PageTurnState {
-    val offset = Animatable(0f)
+    /** Độ trượt hiện tại (px): âm = đang kéo sang trang sau, dương = sang trang trước. */
+    var offset by mutableFloatStateOf(0f)
+        private set
 
     /** 1 = đang thấy trang sau, -1 = đang thấy trang trước, 0 = chỉ trang hiện tại. */
     var direction by mutableIntStateOf(0)
@@ -142,68 +153,128 @@ class PageTurnState {
 
     var width: Float = 1f
     private var pending = 0
+    private val mutex = MutatorMutex()
 
-    /** Hoàn tất ngay lần lật đang dở (khi người đọc lật tiếp rất nhanh). */
-    private suspend fun flush(commit: (Int) -> Unit) {
+    /** Phần trang đã trượt (0..1), để làm mờ dần bóng ở mép trang. */
+    val progress: Float get() = (abs(offset) / width).coerceIn(0f, 1f)
+
+    /** Hoàn tất lần lật đang dở: đổi trang và đặt lại độ trượt trong cùng một bước (không tạm dừng). */
+    private fun flush(commit: (Int) -> Unit) {
         val dir = pending
         if (dir != 0) {
             pending = 0
             commit(dir)
-            offset.snapTo(0f)
+            offset = 0f
             direction = 0
         }
     }
 
-    suspend fun startDrag(commit: (Int) -> Unit) {
-        flush(commit)
-        offset.stop()
+    /** Dừng hiệu ứng đang chạy (lần lật dở dang vẫn được giữ trong [pending]). */
+    private suspend fun stop() {
+        mutex.mutate { }
     }
 
-    suspend fun drag(delta: Float, canNext: Boolean, canPrevious: Boolean) {
-        var value = offset.value + delta
+    private suspend fun animateOffset(target: Float, spec: AnimationSpec<Float>, velocity: Float = 0f) {
+        mutex.mutate {
+            animate(offset, target, velocity, spec) { value, _ -> offset = value }
+        }
+    }
+
+    suspend fun startDrag(commit: (Int) -> Unit) {
+        stop()
+        flush(commit)
+    }
+
+    fun drag(delta: Float, canNext: Boolean, canPrevious: Boolean) {
+        var value = offset + delta
         // Ở đầu/cuối sách: kéo bị "nặng" lại như cao su.
-        if (value < 0f && !canNext) value = (offset.value + delta * 0.3f).coerceAtLeast(-width * 0.12f)
-        if (value > 0f && !canPrevious) value = (offset.value + delta * 0.3f).coerceAtMost(width * 0.12f)
+        if (value < 0f && !canNext) value = (offset + delta * 0.3f).coerceAtLeast(-width * 0.12f)
+        if (value > 0f && !canPrevious) value = (offset + delta * 0.3f).coerceAtMost(width * 0.12f)
         value = value.coerceIn(-width, width)
         direction = when {
             value < 0f && canNext -> 1
             value > 0f && canPrevious -> -1
             else -> 0
         }
-        offset.snapTo(value)
+        offset = value
     }
 
     suspend fun settle(velocity: Float, canNext: Boolean, canPrevious: Boolean, commit: (Int) -> Unit) {
-        val value = offset.value
+        val value = offset
         val dir = when {
             value < 0f && canNext && (value < -width * 0.2f || velocity < -700f) -> 1
             value > 0f && canPrevious && (value > width * 0.2f || velocity > 700f) -> -1
             else -> 0
         }
+        val v = velocity.coerceIn(-MAX_VELOCITY, MAX_VELOCITY)
         if (dir == 0) {
-            offset.animateTo(0f, spring(dampingRatio = 0.82f, stiffness = 520f), initialVelocity = velocity)
+            animateOffset(0f, spring(dampingRatio = 0.82f, stiffness = 520f, visibilityThreshold = 0.5f), v)
             direction = 0
             return
         }
         pending = dir
         direction = dir
-        offset.animateTo(-dir * width, spring(dampingRatio = 1f, stiffness = 340f), initialVelocity = velocity)
+        animateOffset(-dir * width, spring(dampingRatio = 1f, stiffness = 380f, visibilityThreshold = 0.5f), v)
+        // Lò xo có thể vượt quá đích một chút: chốt đúng vị trí rồi mới đổi trang.
+        offset = -dir * width
         flush(commit)
     }
 
-    /** Lật trang khi chạm hoặc bấm phím (có hiệu ứng trượt). */
-    suspend fun turn(dir: Int, canGo: Boolean, commit: (Int) -> Unit) {
+    /** Lật trang khi chạm hoặc bấm phím (có hiệu ứng trượt). [canGo] được hỏi sau khi hoàn tất lần lật trước. */
+    suspend fun turn(dir: Int, canGo: () -> Boolean, commit: (Int) -> Unit) {
+        stop()
         flush(commit)
-        if (!canGo) {
-            offset.animateTo(-dir * width * 0.05f, tween(110, easing = Motion.Emphasized))
-            offset.animateTo(0f, spring(dampingRatio = 0.5f, stiffness = 520f))
+        if (!canGo()) {
+            animateOffset(-dir * width * 0.05f, tween(110, easing = Motion.Emphasized))
+            animateOffset(0f, spring(dampingRatio = 0.5f, stiffness = 520f, visibilityThreshold = 0.5f))
             return
         }
         pending = dir
         direction = dir
-        offset.animateTo(-dir * width, tween(340, easing = Motion.Emphasized))
+        animateOffset(-dir * width, tween(340, easing = Motion.Emphasized))
         flush(commit)
     }
+
+    private companion object {
+        const val MAX_VELOCITY = 9000f
+    }
+}
+
+/**
+ * Vị trí của [target] so với trang đang xem: 0 = chính nó, 1 = trang sau, -1 = trang trước.
+ * Được tính lúc VẼ (không phải lúc dựng giao diện), nên ngay khoảnh khắc lật xong — khi trang hiện
+ * tại vừa đổi và độ trượt vừa về 0 — mọi trang vẫn được vẽ đúng chỗ, không nháy lại trang cũ.
+ */
+private fun relativeSlot(controller: ReaderController, target: PageTarget): Int {
+    val chapter = controller.chapter
+    val view = controller.viewIndex
+    return when {
+        target.chapter == chapter && target.view == view -> 0
+        target.chapter > chapter || (target.chapter == chapter && target.view > view) -> 1
+        else -> -1
+    }
+}
+
+/** Bóng mềm ở mép trang đang trượt vào (như tờ giấy chồng lên), nhạt dần khi trang vào hết. */
+internal fun DrawScope.drawTurnShadow(rel: Int, progress: Float) {
+    if (rel == 0) return
+    val alpha = 0.10f * (1f - progress)
+    if (alpha <= 0.002f) return
+    val shadowWidth = 18.dp.toPx()
+    val edgeX = if (rel > 0) 0f else size.width - shadowWidth
+    drawRect(
+        brush = Brush.horizontalGradient(
+            colors = if (rel > 0) {
+                listOf(Color.Black.copy(alpha = alpha), Color.Transparent)
+            } else {
+                listOf(Color.Transparent, Color.Black.copy(alpha = alpha))
+            },
+            startX = edgeX,
+            endX = edgeX + shadowWidth,
+        ),
+        topLeft = Offset(edgeX, 0f),
+        size = Size(shadowWidth, size.height),
+    )
 }
 
 @Composable
@@ -226,44 +297,26 @@ internal fun PagesContent(
     BoxWithConstraints(modifier.clipToBounds().background(colors.background)) {
         val width = constraints.maxWidth.toFloat()
         SideEffect { turn.width = width }
-        PageSpread(
-            controller,
-            current,
-            geometry,
-            colors,
-            Modifier.graphicsLayer {
-                translationX = turn.offset.value
-                alpha = jumpAlpha.value
-            },
-        )
         val dir = turn.direction
-        if (dir != 0) {
-            controller.neighbor(dir)?.let { neighbor ->
+        val neighbor = if (dir != 0) controller.neighbor(dir) else null
+        val shown = if (neighbor == null) listOf(current) else listOf(current, neighbor)
+        for (target in shown) {
+            // Mỗi trang giữ nguyên "bản vẽ" của nó khi đổi từ trang kế bên thành trang hiện tại.
+            key(target.chapter, target.view) {
                 PageSpread(
                     controller,
-                    neighbor,
+                    target,
                     geometry,
                     colors,
                     Modifier
-                        .graphicsLayer { translationX = turn.offset.value + dir * width }
+                        .graphicsLayer {
+                            val rel = relativeSlot(controller, target)
+                            translationX = (turn.offset + rel * width).coerceIn(-width, width)
+                            alpha = if (rel == 0) jumpAlpha.value else 1f
+                        }
                         .drawWithContent {
                             drawContent()
-                            // Bóng mềm ở mép trang đang trượt vào, như tờ giấy chồng lên nhau.
-                            val shadowWidth = 18.dp.toPx()
-                            val edgeX = if (dir > 0) 0f else size.width - shadowWidth
-                            drawRect(
-                                brush = Brush.horizontalGradient(
-                                    colors = if (dir > 0) {
-                                        listOf(Color.Black.copy(alpha = 0.10f), Color.Transparent)
-                                    } else {
-                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.10f))
-                                    },
-                                    startX = edgeX,
-                                    endX = edgeX + shadowWidth,
-                                ),
-                                topLeft = Offset(edgeX, 0f),
-                                size = Size(shadowWidth, size.height),
-                            )
+                            drawTurnShadow(relativeSlot(controller, target), turn.progress)
                         },
                 )
             }
