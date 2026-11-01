@@ -357,6 +357,18 @@ fun GeneratedCover(title: String, author: String, format: BookFormat, modifier: 
         modifier = modifier.background(Brush.verticalGradient(listOf(palette[0], palette[1]))),
     ) {
         val unit = maxWidth.value / 100f
+        if (maxWidth < 60.dp) {
+            // Bìa rất nhỏ: chỉ hiện chữ cái đầu cho gọn.
+            Text(
+                text = title.trim().take(1).uppercase(),
+                color = palette[2],
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold,
+                fontSize = (maxWidth.value * 0.5f).sp,
+                modifier = Modifier.align(Alignment.Center),
+            )
+            return@BoxWithConstraints
+        }
         Column(Modifier.fillMaxSize().padding((7 * unit).dp)) {
             Box(Modifier.fillMaxWidth().height(maxOf(1f, 1.4f * unit).dp).background(palette[2].copy(alpha = 0.8f)))
             Spacer(Modifier.height((7 * unit).dp))

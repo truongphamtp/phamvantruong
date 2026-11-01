@@ -21,6 +21,9 @@ loang); tối ưu cho màn hình gập **Xiaomi Mix Fold 2**; thanh công cụ n
   căn đều, độ sáng riêng khi đọc.
 - Thư viện có ảnh bìa (tự tạo bìa nếu sách không có), "Đọc tiếp", sắp xếp, tìm theo tên/tác giả.
 - Mục lục, dấu trang, **tìm kiếm không dấu** ("tieng viet" tìm được "tiếng Việt").
+- **Ghi chú và đánh dấu** kiểu Kindle: nhấn giữ một chữ rồi kéo để chọn đoạn → chọn màu tô (vàng, xanh lá, xanh
+  dương, hồng), viết ghi chú, sao chép; chạm vào đoạn đã tô để sửa/xoá. **Sổ ghi chú** (nút "Ghi chú" ở thư viện)
+  gom ghi chú của mọi cuốn sách — bấm vào ghi chú là mở đúng đoạn đó. PDF: nhấn giữ trên trang để ghi chú cả trang.
 - **Đọc to** bằng giọng tiếng Việt của Android, tô sáng câu đang đọc, tự lật trang.
 - Tự nhớ trang đang đọc; mở tệp trực tiếp từ Quản lý tệp, Zalo, Google Drive...
 - Có sẵn cuốn "Hướng dẫn sử dụng" trong thư viện khi mở lần đầu.
