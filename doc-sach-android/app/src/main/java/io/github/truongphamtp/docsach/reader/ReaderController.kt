@@ -254,6 +254,28 @@ class ReaderController(
         return true
     }
 
+    /** Trang (hoặc cặp trang) liền trước/liền sau, để vẽ sẵn khi kéo lật trang. */
+    fun neighbor(direction: Int): PageTarget? {
+        val pages = cache[chapter]?.pages ?: return null
+        val view = viewIndex
+        return if (direction > 0) {
+            when {
+                (view + 1) * pagesPerView < pages.size -> PageTarget(chapter, view + 1, 0, 0)
+                chapter + 1 < chapterCount -> PageTarget(chapter + 1, 0, 0, 0)
+                else -> null
+            }
+        } else {
+            when {
+                view > 0 -> PageTarget(chapter, view - 1, 0, 0)
+                chapter > 0 -> {
+                    val previous = cache[chapter - 1]
+                    PageTarget(chapter - 1, if (previous != null) (previous.pages.size - 1) / pagesPerView else 0, 0, 0)
+                }
+                else -> null
+            }
+        }
+    }
+
     fun goTo(position: ReadingPosition) {
         if (chapterCount == 0) return
         val target = ReadingPosition(position.chapter.coerceIn(0, chapterCount - 1), position.offset.coerceAtLeast(0))

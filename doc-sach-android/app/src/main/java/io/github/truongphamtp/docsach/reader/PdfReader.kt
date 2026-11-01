@@ -1,6 +1,12 @@
 package io.github.truongphamtp.docsach.reader
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onSizeChanged
+import io.github.truongphamtp.docsach.ui.Motion
+import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -293,6 +299,22 @@ fun PdfReaderScreen(
     val zoom = remember { ZoomState() }
     /** Trang đang viết ghi chú (nhấn giữ trên trang). */
     var notePage by remember { mutableStateOf<Int?>(null) }
+    val turn = remember { PageTurnState() }
+    val turnScope = rememberCoroutineScope()
+    val pageAnimation by rememberUpdatedState(settings.pageAnimation)
+    val commitTurn: (Int) -> Unit = { dir -> if (dir > 0) controller.next() else controller.previous() }
+    val animatedTurn: (Int) -> Unit = { dir ->
+        if (!pageAnimation || zoom.isZoomed) {
+            commitTurn(dir)
+        } else {
+            val canGo = if (dir > 0) {
+                (controller.viewIndex + 1) * controller.pagesPerView < controller.pageCount
+            } else {
+                controller.viewIndex > 0
+            }
+            turnScope.launch { turn.turn(dir, canGo, commitTurn) }
+        }
+    }
 
     val chromeVisible = menuVisible || panel != null
     LaunchedEffect(chromeVisible) { platform.setImmersive(!chromeVisible) }
@@ -315,10 +337,10 @@ fun PdfReaderScreen(
     DisposableEffect(controller) {
         platform.setKeyHandler { key ->
             when (key) {
-                HardwareKey.PAGE_DOWN -> controller.next()
-                HardwareKey.PAGE_UP -> controller.previous()
-                HardwareKey.VOLUME_DOWN -> if (latestSettings.volumeKeys) { controller.next(); true } else false
-                HardwareKey.VOLUME_UP -> if (latestSettings.volumeKeys) { controller.previous(); true } else false
+                HardwareKey.PAGE_DOWN -> { animatedTurn(1); true }
+                HardwareKey.PAGE_UP -> { animatedTurn(-1); true }
+                HardwareKey.VOLUME_DOWN -> if (latestSettings.volumeKeys) { animatedTurn(1); true } else false
+                HardwareKey.VOLUME_UP -> if (latestSettings.volumeKeys) { animatedTurn(-1); true } else false
             }
         }
         onDispose { platform.setKeyHandler(null) }
@@ -367,21 +389,35 @@ fun PdfReaderScreen(
                     val areaWidth = constraints.maxWidth
                     val center = foldX?.takeIf { it > areaWidth * 0.35f && it < areaWidth * 0.65f } ?: (areaWidth / 2f)
                     val gutter = with(density) { 10.dp.toPx() }
-                    val target = Triple(controller.viewIndex, controller.navSerial, controller.navDirection)
-                    AnimatedContent(
-                        targetState = target,
-                        transitionSpec = {
-                            val dir = targetState.third
-                            if (!settings.pageAnimation || dir == 0 || targetState.second == initialState.second) {
-                                EnterTransition.None togetherWith ExitTransition.None
+                    val invert = settings.theme == ReaderTheme.BLACK
+                    val smooth = settings.pageAnimation
+                    val canNext = { (controller.viewIndex + 1) * controller.pagesPerView < controller.pageCount }
+                    val canPrevious = { controller.viewIndex > 0 }
+
+                    @Composable
+                    fun Spread(view: Int, pageModifier: Modifier) {
+                        val first = view * controller.pagesPerView
+                        Box(pageModifier.fillMaxSize().background(colors.background)) {
+                            if (controller.pagesPerView == 2) {
+                                Row(Modifier.fillMaxSize()) {
+                                    val leftWidth = with(density) { (center - gutter / 2).toDp() }
+                                    PdfPage(controller, first, Alignment.CenterEnd, invert, zoom.isZoomed, Modifier.width(leftWidth).fillMaxHeight()) { notePage = it }
+                                    Spacer(Modifier.width(with(density) { gutter.toDp() }))
+                                    if (first + 1 < controller.pageCount) {
+                                        PdfPage(controller, first + 1, Alignment.CenterStart, invert, zoom.isZoomed, Modifier.weight(1f).fillMaxHeight()) { notePage = it }
+                                    }
+                                }
                             } else {
-                                slideInHorizontally(tween(220)) { it * dir } togetherWith slideOutHorizontally(tween(220)) { -it * dir }
+                                PdfPage(controller, first, Alignment.Center, invert, zoom.isZoomed, Modifier.fillMaxSize().padding(horizontal = 4.dp)) { notePage = it }
                             }
-                        },
-                        contentKey = { it.first to it.second },
-                        modifier = Modifier
+                        }
+                    }
+
+                    Box(
+                        Modifier
                             .fillMaxSize()
                             .padding(top = 28.dp, bottom = 34.dp)
+                            .clipToBounds()
                             .pageGestures(
                                 onTap = { pos ->
                                     if (menuVisible) {
@@ -389,13 +425,13 @@ fun PdfReaderScreen(
                                     } else {
                                         val fx = pos.x / areaWidth
                                         when {
-                                            fx < 0.3f -> controller.previous()
-                                            fx > 0.7f -> controller.next()
+                                            fx < 0.3f -> animatedTurn(-1)
+                                            fx > 0.7f -> animatedTurn(1)
                                             else -> menuVisible = true
                                         }
                                     }
                                 },
-                                onSwipe = { dir -> if (dir > 0) controller.next() else controller.previous() },
+                                onSwipe = { dir -> commitTurn(dir) },
                                 zoom = zoom,
                                 onLongPress = { pos ->
                                     val second = controller.pagesPerView == 2 && pos.x > center &&
@@ -404,7 +440,23 @@ fun PdfReaderScreen(
                                     menuVisible = false
                                     true
                                 },
+                                onDragStart = if (smooth) {
+                                    { turnScope.launch { turn.startDrag(commitTurn) } }
+                                } else {
+                                    null
+                                },
+                                onDrag = if (smooth) {
+                                    { dx -> turnScope.launch { turn.drag(dx, canNext(), canPrevious()) } }
+                                } else {
+                                    null
+                                },
+                                onDragEnd = if (smooth) {
+                                    { velocity -> turnScope.launch { turn.settle(velocity, canNext(), canPrevious(), commitTurn) } }
+                                } else {
+                                    null
+                                },
                             )
+                            .onSizeChanged { turn.width = it.width.toFloat() }
                             .graphicsLayer {
                                 scaleX = zoom.scale
                                 scaleY = zoom.scale
@@ -412,21 +464,12 @@ fun PdfReaderScreen(
                                 translationY = zoom.offset.y
                                 transformOrigin = TransformOrigin(0f, 0f)
                             },
-                        label = "lật trang PDF",
-                    ) { state ->
-                        val first = state.first * controller.pagesPerView
-                        val invert = settings.theme == ReaderTheme.BLACK
-                        if (controller.pagesPerView == 2) {
-                            Row(Modifier.fillMaxSize()) {
-                                val leftWidth = with(density) { (center - gutter / 2).toDp() }
-                                PdfPage(controller, first, Alignment.CenterEnd, invert, zoom.isZoomed, Modifier.width(leftWidth).fillMaxHeight()) { notePage = it }
-                                Spacer(Modifier.width(with(density) { gutter.toDp() }))
-                                if (first + 1 < controller.pageCount) {
-                                    PdfPage(controller, first + 1, Alignment.CenterStart, invert, zoom.isZoomed, Modifier.weight(1f).fillMaxHeight()) { notePage = it }
-                                }
-                            }
-                        } else {
-                            PdfPage(controller, first, Alignment.Center, invert, zoom.isZoomed, Modifier.fillMaxSize().padding(horizontal = 4.dp)) { notePage = it }
+                    ) {
+                        Spread(controller.viewIndex, Modifier.graphicsLayer { translationX = turn.offset.value })
+                        val dir = turn.direction
+                        val neighbor = controller.viewIndex + dir
+                        if (dir != 0 && neighbor >= 0 && neighbor * controller.pagesPerView < controller.pageCount) {
+                            Spread(neighbor, Modifier.graphicsLayer { translationX = turn.offset.value + dir * turn.width })
                         }
                     }
                     Row(
@@ -450,12 +493,13 @@ fun PdfReaderScreen(
             AnimatedVisibility(
                 visible = menuVisible,
                 modifier = Modifier.align(Alignment.TopCenter),
-                enter = fadeIn() + slideInVertically { -it },
-                exit = fadeOut() + slideOutVertically { -it },
+                enter = Motion.enterFromTop(),
+                exit = Motion.exitToTop(),
             ) {
                 val p = LocalHyper.current
                 Row(
                     Modifier
+                        .widthIn(max = 760.dp)
                         .fillMaxWidth()
                         .windowInsetsPadding(WindowInsets.statusBars)
                         .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -474,8 +518,8 @@ fun PdfReaderScreen(
             AnimatedVisibility(
                 visible = menuVisible,
                 modifier = Modifier.align(Alignment.BottomCenter),
-                enter = fadeIn() + slideInVertically { it },
-                exit = fadeOut() + slideOutVertically { it },
+                enter = Motion.enterFromBottom(),
+                exit = Motion.exitToBottom(),
             ) {
                 PdfBottomBar(controller, colors.chrome, railOnRight, reserveRail = false)
             }
@@ -484,8 +528,8 @@ fun PdfReaderScreen(
                     AnimatedVisibility(
                         visible = menuVisible,
                         modifier = Modifier.align(BiasAlignment(if (railOnRight) 1f else -1f, 0.3f)),
-                        enter = fadeIn() + slideInHorizontally { if (railOnRight) it else -it },
-                        exit = fadeOut() + slideOutHorizontally { if (railOnRight) it else -it },
+                        enter = Motion.enterFromSide(fromRight = railOnRight),
+                        exit = Motion.exitToSide(toRight = railOnRight),
                     ) {
                         FloatingRail(actions, onRight = railOnRight)
                     }
@@ -598,6 +642,7 @@ private fun PdfBottomBar(controller: PdfReaderController, chrome: Color, railOnR
     val pageLabel = (value * (controller.pageCount - 1)).roundToInt() + 1
     Column(
         Modifier
+            .widthIn(max = 760.dp)
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(

@@ -14,6 +14,14 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        // Mã ứng dụng Microsoft (Client ID) để đăng nhập OneDrive. Có thể để trống và nhập trong ứng dụng.
+        // Đặt qua biến ONEDRIVE_CLIENT_ID (vd. biến "Variables" của GitHub Actions) hoặc -PonedriveClientId=...
+        val clientId = (project.findProperty("onedriveClientId") ?: System.getenv("ONEDRIVE_CLIENT_ID") ?: "")
+            .toString()
+            .trim()
+            .filter { it.isLetterOrDigit() || it == '-' }
+        buildConfigField("String", "ONEDRIVE_CLIENT_ID", "\"$clientId\"")
     }
 
     signingConfigs {
@@ -51,7 +59,7 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = false
+        buildConfig = true
     }
 
     testOptions {
@@ -97,6 +105,8 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
 
     testImplementation("junit:junit:4.13.2")
+    // org.json thật cho kiểm thử chạy trên máy tính (bản trong Android chỉ là khung rỗng khi kiểm thử).
+    testImplementation("org.json:json:20240303")
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

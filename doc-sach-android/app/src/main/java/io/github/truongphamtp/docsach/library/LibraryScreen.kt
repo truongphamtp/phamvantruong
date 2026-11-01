@@ -2,7 +2,17 @@
 
 package io.github.truongphamtp.docsach.library
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.unit.IntOffset
+import io.github.truongphamtp.docsach.ui.Motion
+import io.github.truongphamtp.docsach.ui.pressable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -46,6 +56,7 @@ import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -82,6 +93,7 @@ import io.github.truongphamtp.docsach.core.BookRecord
 import io.github.truongphamtp.docsach.core.LibraryPrefs
 import io.github.truongphamtp.docsach.core.LibrarySort
 import io.github.truongphamtp.docsach.core.LibraryView
+import io.github.truongphamtp.docsach.core.SyncUiState
 import io.github.truongphamtp.docsach.core.ToolbarSide
 import io.github.truongphamtp.docsach.format.TextFold
 import io.github.truongphamtp.docsach.ui.AccentTile
@@ -90,6 +102,7 @@ import io.github.truongphamtp.docsach.ui.GlassSearchField
 import io.github.truongphamtp.docsach.ui.GlassToast
 import io.github.truongphamtp.docsach.ui.HyperDialog
 import io.github.truongphamtp.docsach.ui.LiquidBackground
+import io.github.truongphamtp.docsach.ui.LocalBackHandler
 import io.github.truongphamtp.docsach.ui.LocalHazeState
 import io.github.truongphamtp.docsach.ui.LocalHyper
 import io.github.truongphamtp.docsach.ui.PillButton
@@ -134,10 +147,14 @@ fun LibraryScreen(
     onDelete: (BookRecord) -> Unit,
     toolbarSide: ToolbarSide = ToolbarSide.RIGHT,
     onOpenNotes: () -> Unit = {},
+    sync: SyncUiState? = null,
+    syncActions: SyncActions? = null,
+    initialShowAccount: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var showSort by remember { mutableStateOf(false) }
+    var showAccount by rememberSaveable { mutableStateOf(initialShowAccount) }
     var selected by remember { mutableStateOf<BookRecord?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
     val searchFocus = remember { FocusRequester() }
@@ -163,7 +180,14 @@ fun LibraryScreen(
     }
     val continueBook = if (folded.isEmpty()) books.filter { it.lastOpenedAt > 0 }.maxByOrNull { it.lastOpenedAt } else null
 
-    val actions = listOf(
+    LocalBackHandler.current(showAccount) { showAccount = false }
+
+    val actions = listOfNotNull(
+        if (sync != null && syncActions != null) {
+            RailAction(syncIcon(sync), "Đồng bộ", selected = showAccount) { showAccount = true }
+        } else {
+            null
+        },
         RailAction(Icons.Rounded.Search, "Tìm") { runCatching { searchFocus.requestFocus() } },
         RailAction(Icons.Rounded.EditNote, "Ghi chú") { onOpenNotes() },
         RailAction(Icons.AutoMirrored.Rounded.Sort, "Sắp xếp") { showSort = true },
@@ -192,7 +216,7 @@ fun LibraryScreen(
                             ),
                         ),
                 ) {
-                    LibraryHeader(books.size, prefs.sort, busy)
+                    LibraryHeader(books.size, prefs.sort, busy, sync, onSyncClick = { showAccount = true })
                     GlassSearchField(
                         value = query,
                         onValueChange = { query = it },
@@ -215,14 +239,23 @@ fun LibraryScreen(
                 }
                 if (onRight) LibraryRail(actions, onAddBooks)
             }
+            if (sync != null && syncActions != null) {
+                AccountPanel(
+                    visible = showAccount,
+                    onRight = onRight,
+                    state = sync,
+                    actions = syncActions,
+                    onDismiss = { showAccount = false },
+                )
+            }
             AnimatedVisibility(
                 visible = toast != null,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
                     .padding(bottom = 18.dp, start = 24.dp, end = 24.dp),
-                enter = fadeIn() + slideInVertically { it },
-                exit = fadeOut() + slideOutVertically { it },
+                enter = Motion.enterFromBottom(),
+                exit = Motion.exitToBottom(),
             ) {
                 GlassToast(toast.orEmpty())
             }
@@ -265,12 +298,12 @@ private fun LibraryRail(actions: List<RailAction>, onAddBooks: () -> Unit) {
             // Nút chính đặt thấp nhất bên phải: vừa tầm ngón cái tay phải.
             Box(
                 Modifier
+                    .pressable(pressedScale = 0.88f, onClick = onAddBooks)
                     .size(58.dp)
                     .shadow(14.dp, CircleShape, ambientColor = p.accent, spotColor = p.accent)
                     .clip(CircleShape)
                     .background(Brush.verticalGradient(listOf(p.accentLight, p.accent)))
-                    .border(1.dp, Color.White.copy(alpha = 0.55f), CircleShape)
-                    .clickable(onClick = onAddBooks),
+                    .border(1.dp, Color.White.copy(alpha = 0.55f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Rounded.Add, contentDescription = "Thêm sách", tint = p.onAccent, modifier = Modifier.size(30.dp))
@@ -283,7 +316,7 @@ private fun LibraryRail(actions: List<RailAction>, onAddBooks: () -> Unit) {
 }
 
 @Composable
-private fun LibraryHeader(count: Int, sort: LibrarySort, busy: Boolean) {
+private fun LibraryHeader(count: Int, sort: LibrarySort, busy: Boolean, sync: SyncUiState?, onSyncClick: () -> Unit) {
     val p = LocalHyper.current
     Row(
         Modifier.fillMaxWidth().padding(start = 22.dp, end = 16.dp, top = 18.dp, bottom = 10.dp),
@@ -297,14 +330,36 @@ private fun LibraryHeader(count: Int, sort: LibrarySort, busy: Boolean) {
                 fontSize = 14.sp,
             )
         }
-        if (busy) {
-            Row(
-                Modifier.glass(CircleShape).padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CircularProgressIndicator(Modifier.size(16.dp), color = p.accent, strokeWidth = 2.dp)
-                Spacer(Modifier.width(8.dp))
-                Text("Đang thêm sách…", color = p.text, fontSize = 13.sp)
+        // Viên trạng thái: đang thêm sách / đang đồng bộ / lỗi đồng bộ (chạm để mở bảng tài khoản).
+        val status: Pair<String, Boolean>? = when {
+            busy -> "Đang thêm sách…" to false
+            sync?.syncing == true -> "Đang đồng bộ…" to false
+            sync != null && sync.signedIn && sync.lastError != null -> "Lỗi đồng bộ" to true
+            else -> null
+        }
+        AnimatedContent(
+            targetState = status,
+            transitionSpec = { (fadeIn(tween(220)) + scaleIn(Motion.soft(), initialScale = 0.9f)) togetherWith fadeOut(tween(150)) },
+            contentAlignment = Alignment.CenterEnd,
+            label = "trạng thái",
+        ) { current ->
+            if (current != null) {
+                val (text, isError) = current
+                Row(
+                    Modifier
+                        .pressable(enabled = sync != null && !busy, onClick = onSyncClick)
+                        .glass(CircleShape)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (isError) {
+                        Icon(Icons.Rounded.CloudOff, contentDescription = null, tint = p.danger, modifier = Modifier.size(18.dp))
+                    } else {
+                        CircularProgressIndicator(Modifier.size(16.dp), color = p.accent, strokeWidth = 2.dp)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(text, color = if (isError) p.danger else p.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                }
             }
         }
     }
@@ -350,7 +405,13 @@ private fun BookGrid(
     val p = LocalHyper.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 600.dp
-        val columns = if (view == LibraryView.GRID) GridCells.Adaptive(if (wide) 132.dp else 104.dp) else GridCells.Adaptive(if (wide) 340.dp else 280.dp)
+        val large = maxWidth >= 1000.dp
+        val tile = when {
+            large -> 158.dp
+            wide -> 132.dp
+            else -> 104.dp
+        }
+        val columns = if (view == LibraryView.GRID) GridCells.Adaptive(tile) else GridCells.Adaptive(if (wide) 360.dp else 280.dp)
         LazyVerticalGrid(
             columns = columns,
             contentPadding = PaddingValues(start = 12.dp, end = 8.dp, top = 4.dp, bottom = 96.dp),
@@ -359,14 +420,22 @@ private fun BookGrid(
         ) {
             if (continueBook != null) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "continue") {
-                    ContinueCard(continueBook, coverLoader, wide) { onOpen(continueBook) }
+                    Box(Modifier.animateItem()) {
+                        ContinueCard(continueBook, coverLoader, wide) { onOpen(continueBook) }
+                    }
                 }
             }
             items(books, key = { it.id }) { book ->
+                // Ô sách trượt mượt khi đổi cách sắp xếp, mờ dần khi thêm/xoá.
+                val itemModifier = Modifier.animateItem(
+                    fadeInSpec = tween(260),
+                    placementSpec = spring(dampingRatio = 0.86f, stiffness = 380f, visibilityThreshold = IntOffset.VisibilityThreshold),
+                    fadeOutSpec = tween(180),
+                )
                 if (view == LibraryView.GRID) {
-                    BookTile(book, coverLoader, onClick = { onOpen(book) }, onLongClick = { onLongPress(book) })
+                    BookTile(book, coverLoader, onClick = { onOpen(book) }, onLongClick = { onLongPress(book) }, modifier = itemModifier)
                 } else {
-                    BookRow(book, coverLoader, onClick = { onOpen(book) }, onLongClick = { onLongPress(book) })
+                    BookRow(book, coverLoader, onClick = { onOpen(book) }, onLongClick = { onLongPress(book) }, modifier = itemModifier)
                 }
             }
             if (books.isEmpty()) {
@@ -391,11 +460,12 @@ internal fun Cover(book: BookRecord, coverLoader: CoverLoader?, modifier: Modifi
             .shadow(8.dp, shape, ambientColor = p.shadow, spotColor = p.shadow)
             .clip(shape),
     ) {
-        val bitmap = cover
-        if (bitmap != null) {
-            Image(bitmap, contentDescription = book.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        } else {
-            GeneratedCover(book.title, book.author, book.format, Modifier.fillMaxSize())
+        Crossfade(targetState = cover, animationSpec = tween(320), label = "bìa") { bitmap ->
+            if (bitmap != null) {
+                Image(bitmap, contentDescription = book.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            } else {
+                GeneratedCover(book.title, book.author, book.format, Modifier.fillMaxSize())
+            }
         }
         // Lớp bóng kính mỏng trên bìa.
         Box(
@@ -414,8 +484,8 @@ private fun ContinueCard(book: BookRecord, coverLoader: CoverLoader?, wide: Bool
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp, vertical = 6.dp)
+            .pressable(pressedScale = 0.98f, onClick = onClick)
             .glass(RoundedCornerShape(28.dp), elevation = 8.dp)
-            .clickable(onClick = onClick)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -448,12 +518,17 @@ private fun ContinueCard(book: BookRecord, coverLoader: CoverLoader?, wide: Bool
 }
 
 @Composable
-private fun BookTile(book: BookRecord, coverLoader: CoverLoader?, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun BookTile(
+    book: BookRecord,
+    coverLoader: CoverLoader?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val p = LocalHyper.current
     Column(
-        Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+        modifier
+            .pressable(pressedScale = 0.95f, onLongClick = onLongClick, onClick = onClick)
             .padding(6.dp),
     ) {
         Box {
@@ -497,13 +572,19 @@ private fun BookTile(book: BookRecord, coverLoader: CoverLoader?, onClick: () ->
 }
 
 @Composable
-private fun BookRow(book: BookRecord, coverLoader: CoverLoader?, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun BookRow(
+    book: BookRecord,
+    coverLoader: CoverLoader?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val p = LocalHyper.current
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
+            .pressable(pressedScale = 0.98f, onLongClick = onLongClick, onClick = onClick)
             .glass(RoundedCornerShape(22.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -541,9 +622,9 @@ private fun SortDialog(current: LibrarySort, onDismiss: () -> Unit, onSelect: (L
                 Row(
                     Modifier
                         .fillMaxWidth()
+                        .pressable(pressedScale = 0.97f) { onSelect(sort) }
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (isCurrent) p.accent.copy(alpha = 0.12f) else Color.Transparent)
-                        .clickable { onSelect(sort) }
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

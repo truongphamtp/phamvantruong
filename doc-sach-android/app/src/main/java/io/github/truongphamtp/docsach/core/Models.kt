@@ -47,7 +47,11 @@ data class Note(
     /** Tên chương hoặc "Trang N". */
     val label: String,
     val createdAt: Long,
-)
+    /** Lần sửa gần nhất (0 = chưa sửa từ khi tạo). Dùng khi gộp dữ liệu đồng bộ. */
+    val updatedAt: Long = 0L,
+) {
+    val modifiedAt: Long get() = maxOf(createdAt, updatedAt)
+}
 
 /** Một cuốn sách trong thư viện. */
 data class BookRecord(
@@ -63,8 +67,12 @@ data class BookRecord(
     val lastOpenedAt: Long = 0L,
     val progress: Float = 0f,
     val position: ReadingPosition = ReadingPosition(),
+    /** Thời điểm vị trí đọc thay đổi lần cuối (khác lần mở sách) — để đồng bộ đúng trang đang đọc. */
+    val positionAt: Long = 0L,
     val bookmarks: List<Bookmark> = emptyList(),
     val notes: List<Note> = emptyList(),
+    /** Dấu trang/ghi chú đã xoá (id -> thời điểm xoá), để máy khác cũng xoá theo khi đồng bộ. */
+    val deletedItems: Map<String, Long> = emptyMap(),
 )
 
 enum class ReaderTheme(val label: String) {

@@ -77,9 +77,17 @@ class MainActivity : ComponentActivity() {
         return super.onKeyUp(keyCode, event)
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Quay lại ứng dụng: lấy thay đổi từ máy khác.
+        (application as DocSachApp).sync.requestSync(0L)
+    }
+
     override fun onStop() {
         super.onStop()
         val app = application as DocSachApp
         app.appScope.launch(Dispatchers.IO) { app.library.saveNow() }
+        // Rời ứng dụng: đẩy vị trí đọc, ghi chú lên OneDrive ngay.
+        app.sync.requestSync(0L)
     }
 }

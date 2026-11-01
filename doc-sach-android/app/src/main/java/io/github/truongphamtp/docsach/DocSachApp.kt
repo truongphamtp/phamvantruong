@@ -5,6 +5,7 @@ import io.github.truongphamtp.docsach.data.BookImporter
 import io.github.truongphamtp.docsach.data.LibraryStore
 import io.github.truongphamtp.docsach.data.SettingsStore
 import io.github.truongphamtp.docsach.platform.AndroidCoverLoader
+import io.github.truongphamtp.docsach.sync.SyncManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,6 +22,8 @@ class DocSachApp : Application() {
         private set
     lateinit var covers: AndroidCoverLoader
         private set
+    lateinit var sync: SyncManager
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -29,5 +32,8 @@ class DocSachApp : Application() {
         importer = BookImporter(this, library, settings, appScope)
         covers = AndroidCoverLoader(importer.coversDir)
         importer.addGuideIfNeeded()
+        // Đồng bộ qua OneDrive của chính bạn (chỉ chạy khi đã đăng nhập).
+        sync = SyncManager(this, library, importer, BuildConfig.ONEDRIVE_CLIENT_ID)
+        sync.start()
     }
 }

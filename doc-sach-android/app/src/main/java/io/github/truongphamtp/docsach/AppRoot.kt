@@ -1,9 +1,26 @@
 package io.github.truongphamtp.docsach
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,6 +52,7 @@ import io.github.truongphamtp.docsach.core.BookFormat
 import io.github.truongphamtp.docsach.core.BookRecord
 import io.github.truongphamtp.docsach.core.FoldInfo
 import io.github.truongphamtp.docsach.core.Note
+import io.github.truongphamtp.docsach.core.PositionOffer
 import io.github.truongphamtp.docsach.core.ReadingPosition
 import io.github.truongphamtp.docsach.format.BookContent
 import io.github.truongphamtp.docsach.format.EpubArchive
@@ -42,6 +60,8 @@ import io.github.truongphamtp.docsach.format.EpubParser
 import io.github.truongphamtp.docsach.format.TxtParser
 import io.github.truongphamtp.docsach.library.LibraryScreen
 import io.github.truongphamtp.docsach.library.NotesScreen
+import io.github.truongphamtp.docsach.library.SyncActions
+import io.github.truongphamtp.docsach.library.SyncOfferBanner
 import io.github.truongphamtp.docsach.platform.AndroidPdfSource
 import io.github.truongphamtp.docsach.platform.AndroidSpeechEngine
 import io.github.truongphamtp.docsach.platform.EpubImageProvider
@@ -50,6 +70,7 @@ import io.github.truongphamtp.docsach.reader.PdfReaderController
 import io.github.truongphamtp.docsach.reader.PdfReaderScreen
 import io.github.truongphamtp.docsach.reader.ReaderController
 import io.github.truongphamtp.docsach.reader.ReaderScreen
+import io.github.truongphamtp.docsach.sync.MicrosoftSignInScreen
 import io.github.truongphamtp.docsach.ui.LiquidBackground
 import io.github.truongphamtp.docsach.ui.LocalHyper
 import io.github.truongphamtp.docsach.ui.PillButton
@@ -79,29 +100,74 @@ fun AppRoot(
         }
     }
     val id = openBookId
-    when {
-        id != null -> {
-            BackHandler { openBookId = null }
-            key(id, jumpNoteId) {
-                ReaderRoute(app, id, jumpNoteId, fold) { openBookId = null }
+    val route: Route = when {
+        id != null -> Route.Reader(id, jumpNoteId)
+        showNotes -> Route.Notes
+        else -> Route.Library
+    }
+    val signIn by app.sync.signInRequest.collectAsState()
+    Box(Modifier.fillMaxSize()) {
+        // Chuyển màn hình mượt: mở sách thì "phóng ra" từ thư viện, đóng sách thì thu về.
+        AnimatedContent(
+            targetState = route,
+            transitionSpec = {
+                val forward = targetState is Route.Reader || (targetState is Route.Notes && initialState is Route.Library)
+                if (forward) {
+                    (fadeIn(tween(260, delayMillis = 30)) + scaleIn(spring(dampingRatio = 0.86f, stiffness = 380f), initialScale = 0.92f)) togetherWith
+                        (fadeOut(tween(180)) + scaleOut(tween(220), targetScale = 1.03f))
+                } else {
+                    (fadeIn(tween(240)) + scaleIn(spring(dampingRatio = 0.86f, stiffness = 380f), initialScale = 1.04f)) togetherWith
+                        (fadeOut(tween(160)) + scaleOut(tween(200), targetScale = 0.92f))
+                }
+            },
+            label = "chuyển màn hình",
+        ) { target ->
+            when (target) {
+                is Route.Reader -> {
+                    BackHandler { openBookId = null }
+                    ReaderRoute(app, target.bookId, target.noteId, fold) { openBookId = null }
+                }
+                Route.Notes -> {
+                    BackHandler { showNotes = false }
+                    NotesRoute(
+                        app = app,
+                        onOpenNote = { book, note ->
+                            jumpNoteId = note.id
+                            openBookId = book.id
+                        },
+                        onBack = { showNotes = false },
+                    )
+                }
+                Route.Library -> LibraryRoute(app, onOpenNotes = { showNotes = true }) {
+                    jumpNoteId = null
+                    openBookId = it.id
+                }
             }
         }
-        showNotes -> {
-            BackHandler { showNotes = false }
-            NotesRoute(
-                app = app,
-                onOpenNote = { book, note ->
-                    jumpNoteId = note.id
-                    openBookId = book.id
-                },
-                onBack = { showNotes = false },
-            )
-        }
-        else -> LibraryRoute(app, onOpenNotes = { showNotes = true }) {
-            jumpNoteId = null
-            openBookId = it.id
+        // Trang đăng nhập Microsoft trượt lên phủ toàn màn hình.
+        AnimatedVisibility(
+            visible = signIn != null,
+            enter = slideInVertically(spring(dampingRatio = 0.86f, stiffness = 380f)) { it / 3 } + fadeIn(tween(220)),
+            exit = slideOutVertically(tween(220)) { it / 3 } + fadeOut(tween(180)),
+        ) {
+            val shownRequest = remember { mutableStateOf(signIn) }
+            signIn?.let { shownRequest.value = it }
+            shownRequest.value?.let { current ->
+                MicrosoftSignInScreen(
+                    url = current.url,
+                    isRedirect = app.sync::isRedirect,
+                    onRedirect = app.sync::finishSignIn,
+                    onCancel = app.sync::cancelSignIn,
+                )
+            }
         }
     }
+}
+
+private sealed interface Route {
+    data object Library : Route
+    data object Notes : Route
+    data class Reader(val bookId: String, val noteId: String?) : Route
 }
 
 @Composable
@@ -125,6 +191,18 @@ private fun LibraryRoute(app: DocSachApp, onOpenNotes: () -> Unit, onOpen: (Book
     val readerSettings by app.settings.reader.collectAsState()
     val busy by app.importer.busy.collectAsState()
     val message by app.importer.message.collectAsState()
+    val sync by app.sync.state.collectAsState()
+    val syncActions = remember {
+        SyncActions(
+            onSaveClientId = app.sync::setClientId,
+            onSignIn = app.sync::beginSignIn,
+            onSignOut = app.sync::signOut,
+            onSyncNow = app.sync::syncNow,
+            onSyncFilesChange = app.sync::setSyncFiles,
+            onWifiOnlyChange = app.sync::setWifiOnly,
+            onDownloadPending = app.sync::downloadPendingNow,
+        )
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         app.importer.importAll(uris)
     }
@@ -141,6 +219,8 @@ private fun LibraryRoute(app: DocSachApp, onOpenNotes: () -> Unit, onOpen: (Book
         onDelete = { app.importer.delete(it) },
         toolbarSide = readerSettings.toolbarSide,
         onOpenNotes = onOpenNotes,
+        sync = sync,
+        syncActions = syncActions,
     )
 }
 
@@ -198,6 +278,13 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, jumpNoteId: String?, fo
         awaitDispose { closeSession(opened) }
     }
     LaunchedEffect(bookId) { app.library.markOpened(bookId) }
+    // Báo cho phần đồng bộ: sách đang mở (không ghi đè ghi chú đang sửa) và đồng bộ ngay khi đóng.
+    DisposableEffect(record.fingerprint) {
+        app.sync.bookOpened(record.fingerprint)
+        onDispose { app.sync.bookClosed(record.fingerprint) }
+    }
+    val offers by app.sync.offers.collectAsState()
+    val offer = offers[record.fingerprint]
 
     when (val s = session) {
         null -> CenterMessage(record.title, loading = true)
@@ -233,7 +320,17 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, jumpNoteId: String?, fo
                     engine.release()
                 }
             }
-            ReaderScreen(controller, settings, app.settings::updateReader, onClose, fold)
+            Box(Modifier.fillMaxSize()) {
+                ReaderScreen(controller, settings, app.settings::updateReader, onClose, fold)
+                OfferBanner(
+                    offer = offer,
+                    onGo = {
+                        controller.goTo(it.position)
+                        app.sync.answerOffer(it.fingerprint)
+                    },
+                    onStay = { app.sync.answerOffer(it.fingerprint) },
+                )
+            }
         }
         is Session.Pdf -> {
             val controller = remember(s) {
@@ -249,9 +346,32 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, jumpNoteId: String?, fo
                     onNotesChanged = { app.library.updateNotes(bookId, it) },
                 )
             }
-            PdfReaderScreen(controller, settings, app.settings::updateReader, onClose, fold)
+            Box(Modifier.fillMaxSize()) {
+                PdfReaderScreen(controller, settings, app.settings::updateReader, onClose, fold)
+                OfferBanner(
+                    offer = offer,
+                    onGo = {
+                        controller.goTo(it.position.chapter)
+                        app.sync.answerOffer(it.fingerprint)
+                    },
+                    onStay = { app.sync.answerOffer(it.fingerprint) },
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun BoxScope.OfferBanner(offer: PositionOffer?, onGo: (PositionOffer) -> Unit, onStay: (PositionOffer) -> Unit) {
+    SyncOfferBanner(
+        offer = offer,
+        onGo = onGo,
+        onStay = onStay,
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            .padding(start = 16.dp, end = 16.dp, top = 72.dp),
+    )
 }
 
 @Composable

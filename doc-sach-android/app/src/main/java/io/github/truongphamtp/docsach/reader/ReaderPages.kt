@@ -16,7 +16,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -44,6 +56,7 @@ import io.github.truongphamtp.docsach.format.ImagePiece
 import io.github.truongphamtp.docsach.format.PageModel
 import io.github.truongphamtp.docsach.format.TextPiece
 import io.github.truongphamtp.docsach.ui.LocalHyper
+import io.github.truongphamtp.docsach.ui.Motion
 import io.github.truongphamtp.docsach.ui.ReaderColors
 import kotlin.math.roundToInt
 
@@ -98,7 +111,8 @@ fun computeGeometry(
         val gutterHalf = maxOf(inner, foldWidth / 2f + 12f * d)
         val leftWidth = center - gutterHalf - outer
         val rightWidth = width - outer - (center + gutterHalf)
-        val pageWidth = minOf(leftWidth, rightWidth).coerceAtLeast(1f)
+        // Máy tính bảng nằm ngang rất rộng: giới hạn bề rộng mỗi trang để dòng chữ không quá dài.
+        val pageWidth = minOf(leftWidth, rightWidth, 600f * d).coerceAtLeast(1f)
         ReaderGeometry(
             pagesPerView = 2,
             pageWidth = pageWidth.roundToInt(),
@@ -114,39 +128,159 @@ fun computeGeometry(
 /** Định danh "màn hình trang" đang hiển thị; đổi khi người đọc lật trang. */
 data class PageTarget(val chapter: Int, val view: Int, val serial: Int, val direction: Int)
 
+/**
+ * Trạng thái lật trang: trang đang xem trượt theo ngón tay, trang kế bên trượt vào cùng lúc.
+ * Thả tay thì lò xo đưa trang tới đích (hoặc bật về nếu kéo chưa đủ).
+ */
+@Stable
+class PageTurnState {
+    val offset = Animatable(0f)
+
+    /** 1 = đang thấy trang sau, -1 = đang thấy trang trước, 0 = chỉ trang hiện tại. */
+    var direction by mutableIntStateOf(0)
+        private set
+
+    var width: Float = 1f
+    private var pending = 0
+
+    /** Hoàn tất ngay lần lật đang dở (khi người đọc lật tiếp rất nhanh). */
+    private suspend fun flush(commit: (Int) -> Unit) {
+        val dir = pending
+        if (dir != 0) {
+            pending = 0
+            commit(dir)
+            offset.snapTo(0f)
+            direction = 0
+        }
+    }
+
+    suspend fun startDrag(commit: (Int) -> Unit) {
+        flush(commit)
+        offset.stop()
+    }
+
+    suspend fun drag(delta: Float, canNext: Boolean, canPrevious: Boolean) {
+        var value = offset.value + delta
+        // Ở đầu/cuối sách: kéo bị "nặng" lại như cao su.
+        if (value < 0f && !canNext) value = (offset.value + delta * 0.3f).coerceAtLeast(-width * 0.12f)
+        if (value > 0f && !canPrevious) value = (offset.value + delta * 0.3f).coerceAtMost(width * 0.12f)
+        value = value.coerceIn(-width, width)
+        direction = when {
+            value < 0f && canNext -> 1
+            value > 0f && canPrevious -> -1
+            else -> 0
+        }
+        offset.snapTo(value)
+    }
+
+    suspend fun settle(velocity: Float, canNext: Boolean, canPrevious: Boolean, commit: (Int) -> Unit) {
+        val value = offset.value
+        val dir = when {
+            value < 0f && canNext && (value < -width * 0.2f || velocity < -700f) -> 1
+            value > 0f && canPrevious && (value > width * 0.2f || velocity > 700f) -> -1
+            else -> 0
+        }
+        if (dir == 0) {
+            offset.animateTo(0f, spring(dampingRatio = 0.82f, stiffness = 520f), initialVelocity = velocity)
+            direction = 0
+            return
+        }
+        pending = dir
+        direction = dir
+        offset.animateTo(-dir * width, spring(dampingRatio = 1f, stiffness = 340f), initialVelocity = velocity)
+        flush(commit)
+    }
+
+    /** Lật trang khi chạm hoặc bấm phím (có hiệu ứng trượt). */
+    suspend fun turn(dir: Int, canGo: Boolean, commit: (Int) -> Unit) {
+        flush(commit)
+        if (!canGo) {
+            offset.animateTo(-dir * width * 0.05f, tween(110, easing = Motion.Emphasized))
+            offset.animateTo(0f, spring(dampingRatio = 0.5f, stiffness = 520f))
+            return
+        }
+        pending = dir
+        direction = dir
+        offset.animateTo(-dir * width, tween(340, easing = Motion.Emphasized))
+        flush(commit)
+    }
+}
+
 @Composable
 internal fun PagesContent(
     controller: ReaderController,
     geometry: ReaderGeometry,
     colors: ReaderColors,
-    animate: Boolean,
+    turn: PageTurnState,
     modifier: Modifier = Modifier,
 ) {
-    val target = PageTarget(controller.chapter, controller.viewIndex, controller.navSerial, controller.navDirection)
-    AnimatedContent(
-        targetState = target,
-        modifier = modifier,
-        transitionSpec = { pageTransition(initialState, targetState, animate) },
-        contentKey = { Triple(it.chapter, it.view, it.serial) },
-        label = "lật trang",
-    ) { state ->
-        PageSpread(controller, state, geometry, colors)
+    val current = PageTarget(controller.chapter, controller.viewIndex, 0, 0)
+    // Nhảy tới vị trí khác (mục lục, tìm kiếm, ghi chú): trang mới hiện dần lên.
+    val jumpAlpha = remember { Animatable(1f) }
+    LaunchedEffect(controller.navSerial) {
+        if (controller.navSerial > 0 && controller.navDirection == 0) {
+            jumpAlpha.snapTo(0.2f)
+            jumpAlpha.animateTo(1f, tween(320, easing = Motion.Emphasized))
+        }
     }
-}
-
-private fun pageTransition(from: PageTarget, to: PageTarget, animate: Boolean): ContentTransform {
-    if (!animate || from.serial == to.serial) return EnterTransition.None togetherWith ExitTransition.None
-    return when (to.direction) {
-        1 -> slideInHorizontally(tween(240)) { it } togetherWith slideOutHorizontally(tween(240)) { -it / 3 } + fadeOut(tween(240))
-        -1 -> slideInHorizontally(tween(240)) { -it } togetherWith slideOutHorizontally(tween(240)) { it / 3 } + fadeOut(tween(240))
-        else -> fadeIn(tween(160)) togetherWith fadeOut(tween(120))
+    BoxWithConstraints(modifier.clipToBounds().background(colors.background)) {
+        val width = constraints.maxWidth.toFloat()
+        SideEffect { turn.width = width }
+        PageSpread(
+            controller,
+            current,
+            geometry,
+            colors,
+            Modifier.graphicsLayer {
+                translationX = turn.offset.value
+                alpha = jumpAlpha.value
+            },
+        )
+        val dir = turn.direction
+        if (dir != 0) {
+            controller.neighbor(dir)?.let { neighbor ->
+                PageSpread(
+                    controller,
+                    neighbor,
+                    geometry,
+                    colors,
+                    Modifier
+                        .graphicsLayer { translationX = turn.offset.value + dir * width }
+                        .drawWithContent {
+                            drawContent()
+                            // Bóng mềm ở mép trang đang trượt vào, như tờ giấy chồng lên nhau.
+                            val shadowWidth = 18.dp.toPx()
+                            val edgeX = if (dir > 0) 0f else size.width - shadowWidth
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    colors = if (dir > 0) {
+                                        listOf(Color.Black.copy(alpha = 0.10f), Color.Transparent)
+                                    } else {
+                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.10f))
+                                    },
+                                    startX = edgeX,
+                                    endX = edgeX + shadowWidth,
+                                ),
+                                topLeft = Offset(edgeX, 0f),
+                                size = Size(shadowWidth, size.height),
+                            )
+                        },
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun PageSpread(controller: ReaderController, target: PageTarget, geometry: ReaderGeometry, colors: ReaderColors) {
+private fun PageSpread(
+    controller: ReaderController,
+    target: PageTarget,
+    geometry: ReaderGeometry,
+    colors: ReaderColors,
+    modifier: Modifier = Modifier,
+) {
     val chapterPages = controller.pagesFor(target.chapter)
-    Box(Modifier.fillMaxSize().background(colors.background)) {
+    Box(modifier.fillMaxSize().background(colors.background)) {
         if (chapterPages == null) {
             CircularProgressIndicator(Modifier.align(Alignment.Center).size(36.dp), color = colors.secondaryText)
             return@Box

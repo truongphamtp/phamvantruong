@@ -6,6 +6,12 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -26,8 +32,12 @@ import io.github.truongphamtp.docsach.format.BookContent
 import io.github.truongphamtp.docsach.format.EpubArchive
 import io.github.truongphamtp.docsach.format.EpubParser
 import io.github.truongphamtp.docsach.format.TxtParser
+import io.github.truongphamtp.docsach.core.PositionOffer
+import io.github.truongphamtp.docsach.core.SyncUiState
 import io.github.truongphamtp.docsach.library.LibraryScreen
 import io.github.truongphamtp.docsach.library.NotesScreen
+import io.github.truongphamtp.docsach.library.SyncActions
+import io.github.truongphamtp.docsach.library.SyncOfferBanner
 import io.github.truongphamtp.docsach.reader.PdfPageSource
 import io.github.truongphamtp.docsach.reader.PdfReaderController
 import io.github.truongphamtp.docsach.reader.PdfReaderScreen
@@ -47,7 +57,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 /**
- * Chụp ảnh giao diện ở kích thước màn hình Xiaomi Mix Fold 2:
+ * Chụp ảnh giao diện ở kích thước màn hình Xiaomi Mix Fold 2 và máy tính bảng 11,5" (2456×1600):
  * màn hình trong khi mở máy (1914×2160 px) và màn hình ngoài khi gập (1080×2520 px).
  * Chỉ chạy khi có -Pscreenshots=true (ảnh lưu ở app/build/screenshots).
  */
@@ -228,7 +238,9 @@ class ScreenshotTest {
         BookRecord("7", "Kỹ năng đọc hiểu", "", BookFormat.PDF, "", null, 800_000, "g", addedAt = 7),
     )
 
-    private fun shootLibrary(name: String) {
+    private val noSyncActions = SyncActions({}, {}, {}, {}, {}, {}, {})
+
+    private fun shootLibrary(name: String, sync: SyncUiState? = null, showAccount: Boolean = false) {
         compose.setContent {
             NoBlur {
                 LibraryScreen(
@@ -242,12 +254,26 @@ class ScreenshotTest {
                     onOpen = {},
                     onAddBooks = {},
                     onDelete = {},
+                    sync = sync,
+                    syncActions = if (sync != null) noSyncActions else null,
+                    initialShowAccount = showAccount,
                 )
             }
         }
-        compose.mainClock.advanceTimeBy(500)
+        compose.mainClock.advanceTimeBy(800)
         save(name)
     }
+
+    private fun signedIn() = SyncUiState(
+        configured = true,
+        clientId = "1a2b3c4d-1234-5678-9abc-def012345678",
+        signedIn = true,
+        accountName = "Nguyễn Thu Lan",
+        accountEmail = "thulan@outlook.com",
+        lastSyncAt = System.currentTimeMillis() - 4 * 60_000L,
+        summary = "Đã tải về 2 cuốn.",
+        pendingDownloads = 1,
+    )
 
     @Test
     @Config(qualifiers = "w766dp-h864dp-400dpi")
@@ -256,6 +282,59 @@ class ScreenshotTest {
     @Test
     @Config(qualifiers = "w393dp-h916dp-440dpi")
     fun libraryFolded() = shootLibrary("8-thu-vien-gap-may")
+
+    // ---- Máy tính bảng 11,5" 2456×1600 px (mật độ xhdpi → 1228×800 dp), nằm ngang và dựng đứng.
+
+    @Test
+    @Config(qualifiers = "w1228dp-h800dp-xhdpi")
+    fun tabletLandscapeReader() = shootReader("13-tablet-ngang-hai-trang", story(), ReadingPosition(0, 0), menu = true)
+
+    @Test
+    @Config(qualifiers = "w1228dp-h800dp-xhdpi")
+    fun tabletLandscapeLibrary() = shootLibrary("14-tablet-ngang-thu-vien", signedIn())
+
+    @Test
+    @Config(qualifiers = "w800dp-h1228dp-xhdpi")
+    fun tabletPortraitReader() = shootReader("15-tablet-doc-mot-trang", guide(), ReadingPosition(2, 0))
+
+    @Test
+    @Config(qualifiers = "w800dp-h1228dp-xhdpi")
+    fun tabletPortraitLibrary() = shootLibrary("16-tablet-doc-thu-vien")
+
+    // ---- Tài khoản OneDrive
+
+    @Test
+    @Config(qualifiers = "w766dp-h864dp-400dpi")
+    fun accountSignedIn() = shootLibrary("17-dong-bo-da-dang-nhap", signedIn(), showAccount = true)
+
+    @Test
+    @Config(qualifiers = "w393dp-h916dp-440dpi")
+    fun accountNotConfigured() = shootLibrary("18-dong-bo-chua-co-ma", SyncUiState(), showAccount = true)
+
+    @Test
+    @Config(qualifiers = "w393dp-h916dp-440dpi")
+    fun readerOfferFromOtherDevice() {
+        val book = story()
+        var controller: ReaderController? = null
+        compose.setContent {
+            val scope = rememberCoroutineScope()
+            val c = remember { ReaderController(book, ReadingPosition(0, 0), emptyList(), scope).also { controller = it } }
+            NoBlur {
+                Box(Modifier.fillMaxSize()) {
+                    ReaderScreen(c, ReaderSettings(), {}, {}, fold = null)
+                    SyncOfferBanner(
+                        offer = PositionOffer("e", ReadingPosition(2, 0), 0.63f, 1L),
+                        onGo = {},
+                        onStay = {},
+                        modifier = Modifier.align(Alignment.TopCenter).padding(start = 16.dp, end = 16.dp, top = 72.dp),
+                    )
+                }
+            }
+        }
+        compose.waitUntil(20_000) { controller?.isReady == true }
+        compose.mainClock.advanceTimeBy(1_000)
+        save("19-doc-tiep-tu-may-khac")
+    }
 
     /** PDF giả lập khổ A4 để chụp giao diện đọc PDF. */
     private class FakePdf : PdfPageSource {

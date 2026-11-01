@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Đồng bộ qua OneDrive: cần mạng, và biết đang dùng Wi‑Fi hay dữ liệu di động. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Cần để tìm bộ chuyển văn bản thành giọng nói (Android 11 trở lên). -->
     <queries>
         <intent>

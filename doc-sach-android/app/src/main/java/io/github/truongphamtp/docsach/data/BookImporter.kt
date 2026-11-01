@@ -52,6 +52,24 @@ class BookImporter(
         _message.value = null
     }
 
+    /** Hiện một thông báo ngắn ở thư viện (vd. kết quả đồng bộ). */
+    fun postMessage(text: String) {
+        _message.value = text
+    }
+
+    /**
+     * Dọn tệp sách/ảnh bìa không còn thuộc cuốn nào (vd. tải về dở dang khi ứng dụng bị tắt).
+     * Bỏ qua tệp vừa ghi gần đây để không đụng tới việc nhập sách đang diễn ra.
+     */
+    fun removeOrphanFiles() {
+        val books = library.books.value
+        val bookFiles = books.map { it.fileName }.toSet()
+        val coverFiles = books.mapNotNull { it.coverFileName }.toSet()
+        val cutoff = System.currentTimeMillis() - 10 * 60_000L
+        booksDir.listFiles()?.forEach { if (it.name !in bookFiles && it.lastModified() < cutoff) it.delete() }
+        coversDir.listFiles()?.forEach { if (it.name !in coverFiles && it.lastModified() < cutoff) it.delete() }
+    }
+
     fun importAll(uris: List<Uri>) {
         if (uris.isEmpty()) return
         scope.launch {
@@ -78,11 +96,53 @@ class BookImporter(
 
     fun delete(book: BookRecord) {
         library.remove(book.id)
-        scope.launch(Dispatchers.IO) {
-            File(booksDir, book.fileName).delete()
-            book.coverFileName?.let { File(coversDir, it).delete() }
-        }
+        scope.launch(Dispatchers.IO) { deleteFiles(book) }
         _message.value = "Đã xoá “${book.title}” khỏi thư viện."
+    }
+
+    fun fileOf(book: BookRecord): File = File(booksDir, book.fileName)
+
+    /** Xoá tệp sách và ảnh bìa trên máy (không đụng tới danh sách thư viện). */
+    fun deleteFiles(book: BookRecord) {
+        if (book.fileName.isNotEmpty()) File(booksDir, book.fileName).delete()
+        book.coverFileName?.let { File(coversDir, it).delete() }
+    }
+
+    /**
+     * Nhận một tệp sách vừa tải từ OneDrive: kiểm tra đúng dấu vân tay, chuyển vào thư viện và tạo ảnh bìa.
+     * Trả về bản ghi đã gắn tên tệp trên máy này (chưa thêm vào thư viện), hoặc null nếu tệp không khớp.
+     */
+    fun adoptDownloaded(downloaded: File, remote: BookRecord): BookRecord? {
+        if (sha1(downloaded) != remote.fingerprint) return null
+        val id = UUID.randomUUID().toString()
+        val file = File(booksDir, "$id.${remote.format.name.lowercase()}")
+        if (!downloaded.renameTo(file)) {
+            downloaded.copyTo(file, overwrite = true)
+            downloaded.delete()
+        }
+        val cover = when (remote.format) {
+            BookFormat.EPUB -> runCatching {
+                EpubArchive(file).use { archive ->
+                    EpubParser.readMetadata(archive).coverPath?.let { archive.read(it) }?.let { saveCover(id, it) }
+                }
+            }.getOrNull()
+            BookFormat.PDF -> runCatching { renderPdfCover(id, file) }.getOrNull()
+            BookFormat.TXT -> null
+        }
+        return remote.copy(id = id, fileName = file.name, coverFileName = cover, sizeBytes = file.length())
+    }
+
+    private fun sha1(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-1")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     /** Lần đầu mở ứng dụng: thêm sẵn cuốn "Hướng dẫn sử dụng". */

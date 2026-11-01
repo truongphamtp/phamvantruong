@@ -50,6 +50,7 @@ import io.github.truongphamtp.docsach.ui.GlassIconButton
 import io.github.truongphamtp.docsach.ui.HyperDialog
 import io.github.truongphamtp.docsach.ui.LocalHyper
 import io.github.truongphamtp.docsach.ui.glass
+import io.github.truongphamtp.docsach.ui.pressable
 
 /**
  * Thanh thao tác hiện khi đã chọn một đoạn chữ (hoặc chạm vào đoạn đã đánh dấu):
@@ -79,11 +80,11 @@ fun SelectionBar(
             Box(
                 Modifier
                     .padding(horizontal = 3.dp)
+                    .pressable(pressedScale = 0.82f) { onColor(color) }
                     .size(32.dp)
                     .clip(CircleShape)
                     .background(highlightSwatch(color))
-                    .border(if (selected) 2.5.dp else 1.dp, if (selected) p.text else p.divider, CircleShape)
-                    .clickable { onColor(color) },
+                    .border(if (selected) 2.5.dp else 1.dp, if (selected) p.text else p.divider, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 if (selected) Icon(Icons.Rounded.Check, contentDescription = color.label, tint = p.onAccent, modifier = Modifier.size(18.dp))

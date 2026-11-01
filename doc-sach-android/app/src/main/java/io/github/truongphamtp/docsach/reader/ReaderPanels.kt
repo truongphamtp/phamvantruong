@@ -69,6 +69,7 @@ import io.github.truongphamtp.docsach.ui.HyperSwitch
 import io.github.truongphamtp.docsach.ui.LocalHyper
 import io.github.truongphamtp.docsach.ui.SectionLabel
 import io.github.truongphamtp.docsach.ui.SettingRow
+import io.github.truongphamtp.docsach.ui.pressable
 import io.github.truongphamtp.docsach.ui.readerColors
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -105,9 +106,9 @@ private fun ChipButton(text: String, onClick: () -> Unit) {
         fontSize = 13.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier
+            .pressable(pressedScale = 0.92f, onClick = onClick)
             .clip(CircleShape)
             .background(p.accent.copy(alpha = 0.12f))
-            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     )
 }
@@ -140,12 +141,12 @@ private fun TocList(controller: ReaderController, onNavigate: () -> Unit) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (selected) p.accent.copy(alpha = 0.13f) else Color.Transparent)
-                    .clickable {
+                    .pressable(pressedScale = 0.98f) {
                         controller.goTo(ReadingPosition(entry.chapter, entry.offset))
                         onNavigate()
                     }
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (selected) p.accent.copy(alpha = 0.13f) else Color.Transparent)
                     .padding(start = (14 + 16 * entry.depth.coerceAtMost(4)).dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -186,7 +187,7 @@ private fun BookmarkList(controller: ReaderController, onNavigate: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(marks, key = { it.id }) { mark ->
-            GlassGroup(Modifier.clickable {
+            GlassGroup(Modifier.pressable(pressedScale = 0.98f) {
                 controller.goTo(mark.position)
                 onNavigate()
             }) {
@@ -296,8 +297,7 @@ private fun SearchRow(controller: ReaderController, hit: SearchHit, onNavigate: 
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable {
+            .pressable(pressedScale = 0.98f) {
                 controller.openSearchHit(hit)
                 onNavigate()
             }
@@ -430,8 +430,7 @@ private fun ThemePicker(selected: ReaderTheme, onSelect: (ReaderTheme) -> Unit) 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(18.dp))
-                    .clickable { onSelect(theme) }
+                    .pressable(pressedScale = 0.9f) { onSelect(theme) }
                     .padding(6.dp),
             ) {
                 Box(
@@ -486,10 +485,10 @@ private fun GlassStepButton(label: String, fontSize: Int, onClick: () -> Unit) {
     val p = LocalHyper.current
     Box(
         Modifier
+            .pressable(pressedScale = 0.88f, onClick = onClick)
             .size(42.dp)
             .clip(CircleShape)
-            .background(p.controlTrack)
-            .clickable(onClick = onClick),
+            .background(p.controlTrack),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = p.text, fontSize = fontSize.sp, fontWeight = FontWeight.SemiBold)

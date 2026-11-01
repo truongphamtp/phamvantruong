@@ -1,6 +1,15 @@
 package io.github.truongphamtp.docsach.reader
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import io.github.truongphamtp.docsach.ui.Motion
+import kotlinx.coroutines.launch
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -122,7 +131,9 @@ fun ReaderScreen(
     initialMenuVisible: Boolean = false,
     initialPanel: ReaderPanel? = null,
 ) {
-    val colors = remember(settings.theme) { readerColors(settings.theme) }
+    val targetColors = remember(settings.theme) { readerColors(settings.theme) }
+    // Đổi màu nền/chữ mượt khi chọn chủ đề khác.
+    val colors = animateReaderColors(targetColors)
     var menuVisible by rememberSaveable { mutableStateOf(initialMenuVisible) }
     var panel by remember { mutableStateOf(initialPanel) }
     var lastPanel by remember { mutableStateOf(initialPanel ?: ReaderPanel.TOC) }
@@ -153,15 +164,29 @@ fun ReaderScreen(
         onDispose { platform.setBrightness(-1f) }
     }
     val latestSettings by rememberUpdatedState(settings)
+    val turn = remember { PageTurnState() }
+    val turnScope = rememberCoroutineScope()
+    val commitTurn: (Int) -> Unit = { dir ->
+        controller.clearSelection()
+        if (dir > 0) controller.nextPage() else controller.previousPage()
+    }
+    /** Lật trang có hiệu ứng trượt (hoặc lật ngay nếu đã tắt hiệu ứng). */
+    val animatedTurn: (Int) -> Unit = { dir ->
+        if (!latestSettings.pageAnimation) {
+            commitTurn(dir)
+        } else {
+            turnScope.launch { turn.turn(dir, controller.neighbor(dir) != null, commitTurn) }
+        }
+    }
     DisposableEffect(controller) {
         platform.setKeyHandler { key ->
             when (key) {
-                HardwareKey.PAGE_DOWN -> controller.nextPage()
-                HardwareKey.PAGE_UP -> controller.previousPage()
+                HardwareKey.PAGE_DOWN -> { animatedTurn(1); true }
+                HardwareKey.PAGE_UP -> { animatedTurn(-1); true }
                 HardwareKey.VOLUME_DOWN ->
-                    if (latestSettings.volumeKeys && !controller.speaking) { controller.nextPage(); true } else false
+                    if (latestSettings.volumeKeys && !controller.speaking) { animatedTurn(1); true } else false
                 HardwareKey.VOLUME_UP ->
-                    if (latestSettings.volumeKeys && !controller.speaking) { controller.previousPage(); true } else false
+                    if (latestSettings.volumeKeys && !controller.speaking) { animatedTurn(-1); true } else false
             }
         }
         onDispose { platform.setKeyHandler(null) }
@@ -210,6 +235,9 @@ fun ReaderScreen(
                     onFooterTap = { footerMode = footerMode.next() },
                     menuVisible = menuVisible,
                     onMenuVisibleChange = { menuVisible = it },
+                    turn = turn,
+                    onTurn = animatedTurn,
+                    onCommitTurn = commitTurn,
                     modifier = Modifier.weight(1f).fillMaxHeight().haze(hazeState),
                 )
                 if (settings.pinToolbar && railOnRight) {
@@ -220,16 +248,16 @@ fun ReaderScreen(
             AnimatedVisibility(
                 visible = menuVisible,
                 modifier = Modifier.align(Alignment.TopCenter),
-                enter = fadeIn() + slideInVertically { -it },
-                exit = fadeOut() + slideOutVertically { -it },
+                enter = Motion.enterFromTop(),
+                exit = Motion.exitToTop(),
             ) {
                 ReaderTopBar(controller, colors)
             }
             AnimatedVisibility(
                 visible = menuVisible,
                 modifier = Modifier.align(Alignment.BottomCenter),
-                enter = fadeIn() + slideInVertically { it },
-                exit = fadeOut() + slideOutVertically { it },
+                enter = Motion.enterFromBottom(),
+                exit = Motion.exitToBottom(),
             ) {
                 ReaderBottomBar(controller, colors, railOnRight, reserveRail = false)
             }
@@ -239,8 +267,8 @@ fun ReaderScreen(
                         visible = menuVisible,
                         // Lệch xuống dưới một chút: vùng ngón cái khi cầm máy.
                         modifier = Modifier.align(BiasAlignment(if (railOnRight) 1f else -1f, 0.3f)),
-                        enter = fadeIn() + slideInHorizontally { if (railOnRight) it else -it },
-                        exit = fadeOut() + slideOutHorizontally { if (railOnRight) it else -it },
+                        enter = Motion.enterFromSide(fromRight = railOnRight),
+                        exit = Motion.exitToSide(toRight = railOnRight),
                     ) {
                         FloatingRail(actions, onRight = railOnRight)
                     }
@@ -263,8 +291,8 @@ fun ReaderScreen(
                     .align(Alignment.BottomCenter)
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(horizontal = 12.dp, vertical = 14.dp),
-                enter = fadeIn() + slideInVertically { it },
-                exit = fadeOut() + slideOutVertically { it },
+                enter = Motion.enterFromBottom(),
+                exit = Motion.exitToBottom(),
             ) {
                 val active = controller.activeNote
                 SelectionBar(
@@ -357,10 +385,16 @@ private fun ReadingArea(
     onFooterTap: () -> Unit,
     menuVisible: Boolean,
     onMenuVisibleChange: (Boolean) -> Unit,
+    turn: PageTurnState,
+    onTurn: (Int) -> Unit,
+    onCommitTurn: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val resolver = LocalFontFamilyResolver.current
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    val smooth = settings.pageAnimation
     var origin by remember { mutableStateOf(Offset.Zero) }
     BoxWithConstraints(
         modifier
@@ -385,7 +419,7 @@ private fun ReadingArea(
             controller = controller,
             geometry = geometry,
             colors = colors,
-            animate = settings.pageAnimation,
+            turn = turn,
             modifier = Modifier
                 .fillMaxSize()
                 .pageGestures(
@@ -405,21 +439,43 @@ private fun ReadingArea(
                                 val fx = pos.x / width
                                 when {
                                     pos.y < geometry.pageTop -> onMenuVisibleChange(true)
-                                    fx < 0.3f -> controller.previousPage()
-                                    fx > 0.7f -> controller.nextPage()
+                                    fx < 0.3f -> onTurn(-1)
+                                    fx > 0.7f -> onTurn(1)
                                     else -> onMenuVisibleChange(true)
                                 }
                             }
                         }
                         controller.clearSearchHighlight()
                     },
-                    onSwipe = { dir ->
-                        controller.clearSelection()
-                        if (dir > 0) controller.nextPage() else controller.previousPage()
+                    onSwipe = { dir -> onCommitTurn(dir) },
+                    // Kéo trang theo ngón tay, thả ra thì trang trượt tiếp hoặc bật về.
+                    onDragStart = if (smooth) {
+                        { scope.launch { turn.startDrag(onCommitTurn) } }
+                    } else {
+                        null
+                    },
+                    onDrag = if (smooth) {
+                        { dx ->
+                            scope.launch {
+                                turn.drag(dx, controller.neighbor(1) != null, controller.neighbor(-1) != null)
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                    onDragEnd = if (smooth) {
+                        { velocity ->
+                            scope.launch {
+                                turn.settle(velocity, controller.neighbor(1) != null, controller.neighbor(-1) != null, onCommitTurn)
+                            }
+                        }
+                    } else {
+                        null
                     },
                     onLongPress = { pos ->
                         val hit = controller.currentPages?.let { hitText(it, geometry, controller.viewIndex, pos) }
                         if (hit != null) {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onMenuVisibleChange(false)
                             controller.startSelection(hit.word)
                             true
@@ -528,6 +584,7 @@ private fun ReaderTopBar(controller: ReaderController, colors: ReaderColors) {
     val p = LocalHyper.current
     Row(
         Modifier
+            .widthIn(max = 760.dp)
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -569,6 +626,7 @@ private fun ReaderBottomBar(controller: ReaderController, colors: ReaderColors, 
         ReaderController.LOCATION_CHARS + 1
     Column(
         Modifier
+            .widthIn(max = 760.dp)
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(
@@ -633,4 +691,15 @@ private fun SpeechBar(controller: ReaderController, modifier: Modifier = Modifie
         )
         GlassIconButton(Icons.Rounded.Stop, null, onClick = { controller.stopSpeech() }, size = 38.dp)
     }
+}
+
+
+/** Đổi màu trang mượt mà khi chuyển chủ đề đọc. */
+@Composable
+private fun animateReaderColors(target: ReaderColors): ReaderColors {
+    val spec = tween<Color>(420, easing = Motion.Emphasized)
+    val background by animateColorAsState(target.background, spec, label = "màu nền")
+    val text by animateColorAsState(target.text, spec, label = "màu chữ")
+    val secondary by animateColorAsState(target.secondaryText, spec, label = "màu chữ phụ")
+    return target.copy(background = background, text = text, secondaryText = secondary)
 }

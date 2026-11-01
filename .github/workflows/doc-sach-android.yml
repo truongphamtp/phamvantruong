@@ -35,6 +35,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Kiểm thử và đóng gói APK
+        env:
+          # Mã ứng dụng Microsoft để đăng nhập OneDrive (Settings › Secrets and variables › Actions › Variables).
+          # Để trống thì nhập mã ngay trong ứng dụng.
+          ONEDRIVE_CLIENT_ID: ${{ vars.ONEDRIVE_CLIENT_ID }}
         run: ./gradlew testDebugUnitTest assembleRelease
 
       - name: Đặt tên tệp APK

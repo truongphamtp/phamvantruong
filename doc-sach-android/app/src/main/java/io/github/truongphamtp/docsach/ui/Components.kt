@@ -5,6 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -156,7 +158,7 @@ fun SidePanel(
 ) {
     val p = LocalHyper.current
     Box(Modifier.fillMaxSize()) {
-        AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = visible, enter = fadeIn(tween(240)), exit = fadeOut(tween(200))) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -173,8 +175,8 @@ fun SidePanel(
             AnimatedVisibility(
                 visible = visible,
                 modifier = Modifier.align(if (onRight) Alignment.CenterEnd else Alignment.CenterStart),
-                enter = slideInHorizontally { if (onRight) it else -it } + fadeIn(),
-                exit = slideOutHorizontally { if (onRight) it else -it } + fadeOut(),
+                enter = Motion.enterFromSide(fromRight = onRight),
+                exit = Motion.exitToSide(toRight = onRight),
             ) {
                 Column(
                     Modifier
@@ -259,9 +261,16 @@ fun Modifier.pageGestures(
     onLongPress: ((Offset) -> Boolean)? = null,
     onLongPressDrag: ((Offset) -> Unit)? = null,
     onLongPressEnd: (() -> Unit)? = null,
+    /** Kéo ngang theo ngón tay (lật trang mượt). Nếu có, [onSwipe] không được gọi. */
+    onDragStart: (() -> Unit)? = null,
+    onDrag: ((Float) -> Unit)? = null,
+    onDragEnd: ((velocityX: Float) -> Unit)? = null,
 ): Modifier {
     val tap by rememberUpdatedState(onTap)
     val swipe by rememberUpdatedState(onSwipe)
+    val dragStart by rememberUpdatedState(onDragStart)
+    val dragMove by rememberUpdatedState(onDrag)
+    val dragEnd by rememberUpdatedState(onDragEnd)
     val longPress by rememberUpdatedState(onLongPress)
     val longPressDrag by rememberUpdatedState(onLongPressDrag)
     val longPressEnd by rememberUpdatedState(onLongPressEnd)
@@ -273,6 +282,9 @@ fun Modifier.pageGestures(
             var dragging = false
             var transformed = false
             var released = false
+            var horizontal = false
+            val velocity = VelocityTracker()
+            velocity.addPosition(down.uptimeMillis, down.position)
 
             /** Xử lý một sự kiện chạm; trả về false khi mọi ngón tay đã nhấc. */
             fun handle(event: PointerEvent): Boolean {
@@ -295,8 +307,16 @@ fun Modifier.pageGestures(
                     return true
                 }
                 total += delta
-                if (!dragging && total.getDistance() > slop) dragging = true
-                if (dragging) change.consume()
+                velocity.addPosition(change.uptimeMillis, change.position)
+                if (!dragging && total.getDistance() > slop) {
+                    dragging = true
+                    horizontal = abs(total.x) > abs(total.y)
+                    if (horizontal && dragMove != null) dragStart?.invoke()
+                }
+                if (dragging) {
+                    if (horizontal && dragMove != null) dragMove?.invoke(delta.x)
+                    change.consume()
+                }
                 return true
             }
 
@@ -328,7 +348,9 @@ fun Modifier.pageGestures(
                 while (handle(awaitPointerEvent())) Unit
             }
             if (transformed) return@awaitEachGesture
-            if (dragging) {
+            if (dragging && horizontal && dragMove != null) {
+                dragEnd?.invoke(velocity.calculateVelocity().x)
+            } else if (dragging) {
                 if (abs(total.x) > 40.dp.toPx() && abs(total.x) > abs(total.y) * 1.2f) {
                     swipe(if (total.x < 0) 1 else -1)
                 }

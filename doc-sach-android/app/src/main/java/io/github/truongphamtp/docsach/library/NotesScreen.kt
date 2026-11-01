@@ -22,8 +22,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import io.github.truongphamtp.docsach.ui.pressable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -88,8 +91,8 @@ fun NoteCard(note: Note, onClick: () -> Unit, onDelete: (() -> Unit)?, modifier:
         modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
+            .pressable(pressedScale = 0.98f, onClick = onClick)
             .glass(RoundedCornerShape(22.dp))
-            .clickable(onClick = onClick)
             .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -204,22 +207,30 @@ fun NotesScreen(
                     if (total == 0) {
                         EmptyNotes()
                     } else {
-                        LazyColumn(
+                        // Màn hình rộng (máy tính bảng nằm ngang): ghi chú xếp thành nhiều cột.
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(380.dp),
                             contentPadding = PaddingValues(start = 12.dp, end = 8.dp, top = 4.dp, bottom = 40.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             groups.forEach { (book, notes) ->
-                                item(key = "sach-${book.id}") { BookHeader(book, coverLoader, notes.size) }
-                                items(notes, key = { it.id }) { note ->
+                                item(key = "sach-${book.id}", span = { GridItemSpan(maxLineSpan) }) {
+                                    BookHeader(book, coverLoader, notes.size)
+                                }
+                                gridItems(notes, key = { it.id }) { note ->
                                     NoteCard(
                                         note = note,
                                         onClick = { onOpenNote(book, note) },
                                         onDelete = { pendingDelete = book to note },
+                                        modifier = Modifier.animateItem(),
                                     )
                                 }
                             }
                             if (groups.isEmpty()) {
-                                item { Text("Không có ghi chú nào khớp.", color = p.textSecondary, modifier = Modifier.padding(16.dp)) }
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Text("Không có ghi chú nào khớp.", color = p.textSecondary, modifier = Modifier.padding(16.dp))
+                                }
                             }
                         }
                     }

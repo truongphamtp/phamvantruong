@@ -1,6 +1,16 @@
 package io.github.truongphamtp.docsach.ui
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -43,6 +53,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -236,23 +247,37 @@ fun LiquidBackground(modifier: Modifier = Modifier) {
     }
 }
 
-/** Công tắc kiểu HyperOS: rãnh bo tròn chuyển xanh khi bật, núm trắng. */
+/** Công tắc kiểu HyperOS: rãnh bo tròn chuyển xanh khi bật, núm trắng nảy nhẹ và giãn ra khi nhấn. */
 @Composable
 fun HyperSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
     val p = LocalHyper.current
-    val progress by animateFloatAsState(if (checked) 1f else 0f, label = "công tắc")
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val progress by animateFloatAsState(if (checked) 1f else 0f, Motion.bouncy(), label = "công tắc")
+    val stretch by animateDpAsState(if (pressed) 6.dp else 0.dp, Motion.snappy(), label = "giãn núm")
+    val track by animateColorAsState(
+        if (checked) p.accent else p.controlTrack.copy(alpha = if (p.dark) 0.22f else 0.14f),
+        tween(220),
+        label = "màu rãnh",
+    )
     Box(
         modifier
             .size(width = 52.dp, height = 31.dp)
             .clip(CircleShape)
-            .background(lerp(p.controlTrack.copy(alpha = if (p.dark) 0.22f else 0.14f), p.accent, progress))
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .background(track)
+            .toggleable(
+                value = checked,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
             .padding(3.dp),
     ) {
         Box(
             Modifier
-                .offset(x = 21.dp * progress)
-                .size(25.dp)
+                .offset(x = (21.dp - stretch) * progress)
+                .size(width = 25.dp + stretch, height = 25.dp)
                 .shadow(3.dp, CircleShape)
                 .background(Color.White, CircleShape),
         )
@@ -272,7 +297,11 @@ fun HyperSegmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit
             .padding(3.dp),
     ) {
         val itemWidth = maxWidth / options.size.coerceAtLeast(1)
-        val offset by animateDpAsState(itemWidth * selected.coerceIn(0, options.size - 1), label = "chọn")
+        val offset by animateDpAsState(
+            itemWidth * selected.coerceIn(0, options.size - 1),
+            spring(dampingRatio = 0.74f, stiffness = 520f, visibilityThreshold = Dp.VisibilityThreshold),
+            label = "chọn",
+        )
         Box(
             Modifier
                 .offset(x = offset)
@@ -283,17 +312,17 @@ fun HyperSegmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit
         )
         Row(Modifier.fillMaxSize()) {
             options.forEachIndexed { index, label ->
+                val textColor by animateColorAsState(if (index == selected) p.text else p.textSecondary, tween(200), label = "chữ")
                 Box(
                     Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(CircleShape)
-                        .clickable { onSelect(index) },
+                        .pressable(pressedScale = 0.95f) { onSelect(index) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         label,
-                        color = if (index == selected) p.text else p.textSecondary,
+                        color = textColor,
                         fontSize = 13.sp,
                         fontWeight = if (index == selected) FontWeight.SemiBold else FontWeight.Medium,
                         maxLines = 1,
@@ -325,7 +354,11 @@ fun HyperSlider(
     val onFinished by rememberUpdatedState(onValueChangeFinished)
     val start = valueRange.start
     val end = valueRange.endInclusive
-    val fraction = if (end > start) ((value - start) / (end - start)).coerceIn(0f, 1f) else 0f
+    var dragging by remember { mutableStateOf(false) }
+    val target = if (end > start) ((value - start) / (end - start)).coerceIn(0f, 1f) else 0f
+    val animated by animateFloatAsState(target, Motion.snappy(), label = "thanh trượt")
+    val fraction = if (dragging) target else animated
+    val knobScale by animateFloatAsState(if (dragging) 1.15f else 1f, Motion.bouncy(), label = "núm")
     val trackHeight = if (knob) 8.dp else height
     Box(
         modifier
@@ -343,12 +376,14 @@ fun HyperSlider(
                 }
                 awaitEachGesture {
                     val down = awaitFirstDown()
+                    dragging = true
                     onChange(valueAt(down.position.x))
                     down.consume()
                     drag(down.id) { change ->
                         onChange(valueAt(change.position.x))
                         change.consume()
                     }
+                    dragging = false
                     onFinished?.invoke()
                 }
             },
@@ -375,6 +410,10 @@ fun HyperSlider(
                     Modifier
                         .offset(x = (maxWidth - knobSize) * fraction)
                         .size(knobSize)
+                        .graphicsLayer {
+                            scaleX = knobScale
+                            scaleY = knobScale
+                        }
                         .shadow(4.dp, CircleShape)
                         .background(Color.White, CircleShape),
                 )
@@ -387,11 +426,12 @@ fun HyperSlider(
 @Composable
 fun ThinProgress(progress: Float, modifier: Modifier = Modifier, height: Dp = 4.dp) {
     val p = LocalHyper.current
+    val animated by animateFloatAsState(progress.coerceIn(0f, 1f), Motion.soft(), label = "tiến độ")
     BoxWithConstraints(modifier.fillMaxWidth().height(height).clip(CircleShape).background(p.controlTrack)) {
         Box(
             Modifier
                 .fillMaxHeight()
-                .width(maxWidth * progress.coerceIn(0f, 1f))
+                .width(maxWidth * animated)
                 .background(Brush.horizontalGradient(listOf(p.accentLight, p.accent))),
         )
     }
@@ -416,10 +456,10 @@ fun PillButton(
     val content = if (primary || danger) p.onAccent else p.text
     Row(
         modifier
+            .pressable(pressedScale = 0.95f, onClick = onClick)
             .height(46.dp)
             .clip(CircleShape)
             .background(background)
-            .clickable(onClick = onClick)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -444,10 +484,10 @@ fun GlassIconButton(
     size: Dp = 44.dp,
 ) {
     val p = LocalHyper.current
+    val selection by animateFloatAsState(if (selected) 1f else 0f, Motion.snappy(), label = "chọn nút")
     Column(
         modifier
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(enabled = enabled, onClick = onClick)
+            .pressable(enabled = enabled, pressedScale = 0.88f, onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -455,18 +495,27 @@ fun GlassIconButton(
             Modifier
                 .size(size)
                 .clip(CircleShape)
-                .background(
-                    if (selected) Brush.verticalGradient(listOf(p.accentLight, p.accent)) else SolidColor(p.controlTrack),
-                ),
+                .background(p.controlTrack)
+                .graphicsLayer { alpha = 1f },
             contentAlignment = Alignment.Center,
         ) {
+            // Nền xanh hiện dần và "nở" ra khi được chọn.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = selection
+                        scaleX = 0.6f + 0.4f * selection
+                        scaleY = 0.6f + 0.4f * selection
+                    }
+                    .background(Brush.verticalGradient(listOf(p.accentLight, p.accent)), CircleShape),
+            )
             Icon(
                 icon,
                 contentDescription = label,
                 tint = when {
                     !enabled -> p.textSecondary.copy(alpha = 0.5f)
-                    selected -> p.onAccent
-                    else -> p.text
+                    else -> lerp(p.text, p.onAccent, selection)
                 },
                 modifier = Modifier.size(22.dp),
             )
@@ -533,10 +582,21 @@ fun HyperDialog(
                 .padding(14.dp),
             contentAlignment = Alignment.BottomCenter,
         ) {
+            val appear = remember { Animatable(0f) }
+            LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 420f)) }
             Column(
                 Modifier
                     .widthIn(max = 460.dp)
                     .fillMaxWidth()
+                    .graphicsLayer {
+                        val t = appear.value
+                        alpha = t.coerceIn(0f, 1f)
+                        translationY = (1f - t) * 90.dp.toPx()
+                        val s = 0.94f + 0.06f * t
+                        scaleX = s
+                        scaleY = s
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                    }
                     .shadow(18.dp, RoundedCornerShape(32.dp), ambientColor = p.shadow, spotColor = p.shadow)
                     .clip(RoundedCornerShape(32.dp))
                     .background(if (p.dark) Color(0xF2161D2E) else Color(0xF7FFFFFF))
@@ -652,8 +712,7 @@ fun GlassSearchField(
             Box(
                 Modifier
                     .size(36.dp)
-                    .clip(CircleShape)
-                    .clickable { onValueChange("") },
+                    .pressable { onValueChange("") },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Rounded.Close, contentDescription = "Xoá", tint = p.textSecondary, modifier = Modifier.size(18.dp))
