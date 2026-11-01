@@ -8,9 +8,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -41,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -119,11 +119,16 @@ fun MicrosoftSignInScreen(
                 }
                 GlassIconButton(Icons.Rounded.Close, null, onCancel, size = 40.dp)
             }
-            Box(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)) {
-                AnimatedVisibility(visible = progress in 1..99, enter = fadeIn(), exit = fadeOut()) {
-                    ThinProgress(progress / 100f, Modifier.fillMaxWidth())
-                }
-            }
+            // Thanh tiến độ tải trang: hiện mờ dần khi đang tải, ẩn khi xong.
+            val loadingAlpha by animateFloatAsState(if (progress in 1..99) 1f else 0f, tween(220), label = "tiến độ")
+            ThinProgress(
+                progress / 100f,
+                Modifier
+                    .widthIn(max = 720.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 6.dp)
+                    .graphicsLayer { alpha = loadingAlpha },
+            )
             Box(
                 Modifier
                     .widthIn(max = 720.dp)
