@@ -36,7 +36,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,6 +52,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -85,114 +86,65 @@ data class RailAction(
     val onClick: () -> Unit,
 )
 
-@Composable
-fun RailButton(action: RailAction, showLabel: Boolean, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    Column(
-        modifier = modifier
-            .width(76.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(enabled = action.enabled, onClick = action.onClick)
-            .padding(vertical = if (showLabel) 6.dp else 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(width = 56.dp, height = 34.dp)
-                .clip(RoundedCornerShape(17.dp))
-                .background(if (action.selected) colors.secondaryContainer else Color.Transparent),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = action.icon,
-                contentDescription = action.label,
-                tint = when {
-                    !action.enabled -> colors.onSurface.copy(alpha = 0.38f)
-                    action.selected -> colors.primary
-                    else -> colors.onSurface
-                },
-            )
-        }
-        if (showLabel) {
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = action.label,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (action.enabled) colors.onSurface else colors.onSurface.copy(alpha = 0.38f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
-}
-
 /**
- * Thanh công cụ dọc nổi bám mép phải (hoặc trái) màn hình — vùng ngón cái dễ chạm khi cầm máy.
+ * Thanh công cụ dọc dạng viên kính nổi bám mép phải (hoặc trái) — vùng ngón cái dễ chạm khi cầm máy.
  */
 @Composable
 fun FloatingRail(actions: List<RailAction>, onRight: Boolean, modifier: Modifier = Modifier) {
-    val shape = if (onRight) {
-        RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp)
-    } else {
-        RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)
-    }
-    Surface(
-        modifier = modifier,
-        shape = shape,
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 6.dp,
-        tonalElevation = 2.dp,
-    ) {
-        BoxWithConstraints {
-            val showLabels = maxHeight >= (actions.size * 66 + 24).dp
-            Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 12.dp, horizontal = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(if (showLabels) 2.dp else 0.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                actions.forEach { RailButton(it, showLabels) }
+    BoxWithConstraints(modifier.padding(horizontal = 10.dp)) {
+        val showLabels = maxHeight >= (actions.size * 76 + 28).dp
+        Column(
+            modifier = Modifier
+                .glass(RoundedCornerShape(36.dp), elevation = 14.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 10.dp, horizontal = 3.dp),
+            verticalArrangement = Arrangement.spacedBy(if (showLabels) 2.dp else 0.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            actions.forEach {
+                GlassIconButton(it.icon, if (showLabels) it.label else null, it.onClick, selected = it.selected, enabled = it.enabled)
             }
         }
     }
 }
 
-/** Thanh công cụ dọc cố định chiếm hết chiều cao, các nút dồn xuống vùng ngón cái. */
+/** Thanh công cụ luôn hiện: viên kính nằm trong cột riêng, các nút dồn về vùng ngón cái. */
 @Composable
 fun PinnedRail(
     actions: List<RailAction>,
     modifier: Modifier = Modifier,
-    containerColor: Color = MaterialTheme.colorScheme.surface,
     header: (@Composable ColumnScope.() -> Unit)? = null,
     footer: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
-    Surface(modifier = modifier.fillMaxHeight(), color = containerColor) {
-        BoxWithConstraints {
-            val railHeight = maxHeight
-            val showLabels = railHeight >= (actions.size * 66 + 200).dp
-            Column(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(84.dp)
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                header?.invoke(this)
-                // Dồn nút xuống khoảng giữa-dưới: vùng ngón cái chạm tới khi cầm máy bằng một tay.
-                Spacer(Modifier.height(if (railHeight > 560.dp) railHeight * 0.22f else 8.dp))
-                actions.forEach { RailButton(it, showLabels) }
-                Spacer(Modifier.height(16.dp))
-                footer?.invoke(this)
+    BoxWithConstraints(
+        modifier
+            .fillMaxHeight()
+            .width(96.dp)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
+            .padding(vertical = 12.dp),
+    ) {
+        val railHeight = maxHeight
+        val showLabels = railHeight >= (actions.size * 76 + 220).dp
+        Column(
+            modifier = Modifier
+                .align(BiasAlignment(0f, if (railHeight > 560.dp) 0.3f else 0f))
+                .padding(horizontal = 10.dp)
+                .glass(RoundedCornerShape(38.dp), elevation = 14.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 12.dp, horizontal = 3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(if (showLabels) 2.dp else 0.dp),
+        ) {
+            header?.invoke(this)
+            actions.forEach {
+                GlassIconButton(it.icon, if (showLabels) it.label else null, it.onClick, selected = it.selected, enabled = it.enabled)
             }
+            footer?.invoke(this)
         }
     }
 }
 
-/** Bảng trượt ra từ cạnh phải (hoặc trái) — mục lục, tìm kiếm, cài đặt hiển thị. */
+/** Tấm kính trượt ra từ cạnh phải (hoặc trái) — mục lục, tìm kiếm, cài đặt hiển thị. */
 @Composable
 fun SidePanel(
     visible: Boolean,
@@ -201,12 +153,13 @@ fun SidePanel(
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val p = LocalHyper.current
     Box(Modifier.fillMaxSize()) {
         AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.28f))
+                    .background(Color.Black.copy(alpha = if (p.dark) 0.35f else 0.18f))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -215,50 +168,41 @@ fun SidePanel(
             )
         }
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val panelWidth: Dp = minOf(420.dp, maxWidth * 0.92f)
+            val panelWidth: Dp = minOf(440.dp, maxWidth * 0.94f)
             AnimatedVisibility(
                 visible = visible,
                 modifier = Modifier.align(if (onRight) Alignment.CenterEnd else Alignment.CenterStart),
                 enter = slideInHorizontally { if (onRight) it else -it } + fadeIn(),
                 exit = slideOutHorizontally { if (onRight) it else -it } + fadeOut(),
             ) {
-                val shape = if (onRight) {
-                    RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)
-                } else {
-                    RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp)
-                }
-                Surface(
-                    modifier = Modifier.fillMaxHeight().width(panelWidth),
-                    shape = shape,
-                    color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 8.dp,
-                ) {
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .windowInsetsPadding(
-                                WindowInsets.safeDrawing.only(
-                                    WindowInsetsSides.Vertical + if (onRight) WindowInsetsSides.End else WindowInsetsSides.Start,
-                                ),
+                Column(
+                    Modifier
+                        .fillMaxHeight()
+                        .width(panelWidth)
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(
+                                WindowInsetsSides.Vertical + if (onRight) WindowInsetsSides.End else WindowInsetsSides.Start,
                             ),
+                        )
+                        .padding(10.dp)
+                        .glass(RoundedCornerShape(34.dp), strong = true, elevation = 18.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 10.dp, top = 14.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.titleLarge,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            IconButton(onClick = onDismiss) {
-                                Icon(Icons.Filled.Close, contentDescription = "Đóng")
-                            }
-                        }
-                        content()
+                        Text(
+                            text = title,
+                            color = p.text,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        GlassIconButton(Icons.Rounded.Close, null, onDismiss, size = 38.dp)
                     }
+                    content()
                 }
             }
         }

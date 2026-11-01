@@ -3,16 +3,15 @@ package io.github.truongphamtp.docsach
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -31,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.truongphamtp.docsach.core.BookFormat
 import io.github.truongphamtp.docsach.core.BookRecord
 import io.github.truongphamtp.docsach.core.FoldInfo
@@ -48,6 +48,10 @@ import io.github.truongphamtp.docsach.reader.PdfReaderController
 import io.github.truongphamtp.docsach.reader.PdfReaderScreen
 import io.github.truongphamtp.docsach.reader.ReaderController
 import io.github.truongphamtp.docsach.reader.ReaderScreen
+import io.github.truongphamtp.docsach.ui.LiquidBackground
+import io.github.truongphamtp.docsach.ui.LocalHyper
+import io.github.truongphamtp.docsach.ui.PillButton
+import io.github.truongphamtp.docsach.ui.glass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
@@ -208,21 +212,27 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, fold: FoldInfo?, onClos
 
 @Composable
 private fun CenterMessage(text: String, loading: Boolean, onClose: (() -> Unit)? = null) {
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    val p = LocalHyper.current
+    Box(Modifier.fillMaxSize()) {
+        LiquidBackground(Modifier.fillMaxSize())
         Column(
-            Modifier.fillMaxSize().padding(32.dp),
-            verticalArrangement = Arrangement.Center,
+            Modifier
+                .align(Alignment.Center)
+                .padding(24.dp)
+                .widthIn(max = 420.dp)
+                .glass(RoundedCornerShape(32.dp), strong = true, elevation = 10.dp)
+                .padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (loading) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = p.accent)
                 Spacer(Modifier.height(16.dp))
-                Text("Đang mở “$text”…", textAlign = TextAlign.Center)
+                Text("Đang mở “$text”…", color = p.text, textAlign = TextAlign.Center)
             } else {
-                Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
+                Text(text, color = p.text, fontSize = 16.sp, textAlign = TextAlign.Center)
                 if (onClose != null) {
-                    Spacer(Modifier.height(16.dp))
-                    Button(onClick = onClose) { Text("Về thư viện") }
+                    Spacer(Modifier.height(18.dp))
+                    PillButton("Về thư viện", onClick = onClose)
                 }
             }
         }

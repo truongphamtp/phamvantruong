@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nền biểu tượng: xanh dương chuyển màu, có vệt sáng như mặt kính (phong cách HyperOS). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="10"
+                android:startY="0"
+                android:endX="98"
+                android:endY="108">
+                <item android:offset="0" android:color="#FF8CC2FF" />
+                <item android:offset="0.5" android:color="#FF3D86F7" />
+                <item android:offset="1" android:color="#FF1F55D6" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#2EFFFFFF"
+        android:pathData="M0,0h108v40c-34,14 -72,12 -108,-2z" />
+</vector>

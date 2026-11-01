@@ -1,68 +1,85 @@
 package io.github.truongphamtp.docsach.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import io.github.truongphamtp.docsach.core.ReaderTheme
 
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF2A5D8F),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFD3E4FF),
-    onPrimaryContainer = Color(0xFF001C38),
-    secondary = Color(0xFF6D5D45),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFF4E1C1),
-    onSecondaryContainer = Color(0xFF261A06),
-    tertiary = Color(0xFF9A4F16),
-    onTertiary = Color.White,
-    background = Color(0xFFFBF8F4),
-    onBackground = Color(0xFF1D1B18),
-    surface = Color(0xFFFBF8F4),
-    onSurface = Color(0xFF1D1B18),
-    surfaceVariant = Color(0xFFECE5DB),
-    onSurfaceVariant = Color(0xFF4E4639),
-    surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF7F2EC),
-    surfaceContainer = Color(0xFFF1ECE5),
-    surfaceContainerHigh = Color(0xFFEBE6DF),
-    surfaceContainerHighest = Color(0xFFE6E0D9),
-    outline = Color(0xFF807667),
-    outlineVariant = Color(0xFFD1C5B4),
-)
+/** Màu Material lấy theo bảng màu HyperOS (cho các thành phần Material còn dùng). */
+private fun materialColors(p: HyperPalette): ColorScheme = if (p.dark) {
+    darkColorScheme(
+        primary = p.accent,
+        onPrimary = p.onAccent,
+        primaryContainer = p.accent.copy(alpha = 0.28f),
+        onPrimaryContainer = p.text,
+        secondary = p.accentLight,
+        onSecondary = Color.Black,
+        secondaryContainer = p.controlTrack,
+        onSecondaryContainer = p.text,
+        background = p.backgroundBottom,
+        onBackground = p.text,
+        surface = Color(0xFF121A2B),
+        onSurface = p.text,
+        surfaceVariant = Color(0xFF1C2538),
+        onSurfaceVariant = p.textSecondary,
+        surfaceContainer = Color(0xFF151D30),
+        surfaceContainerHigh = Color(0xFF1A2337),
+        surfaceContainerHighest = Color(0xFF212B40),
+        outline = Color(0x40FFFFFF),
+        outlineVariant = Color(0x1FFFFFFF),
+        error = p.danger,
+    )
+} else {
+    lightColorScheme(
+        primary = p.accent,
+        onPrimary = p.onAccent,
+        primaryContainer = Color(0xFFDCE9FF),
+        onPrimaryContainer = p.text,
+        secondary = p.accent,
+        onSecondary = p.onAccent,
+        secondaryContainer = Color(0xFFE3ECFA),
+        onSecondaryContainer = p.text,
+        background = p.backgroundBottom,
+        onBackground = p.text,
+        surface = Color(0xFFF7FAFF),
+        onSurface = p.text,
+        surfaceVariant = Color(0xFFEAF0FA),
+        onSurfaceVariant = p.textSecondary,
+        surfaceContainer = Color(0xFFF0F5FD),
+        surfaceContainerHigh = Color(0xFFEAF1FC),
+        surfaceContainerHighest = Color(0xFFE4ECFA),
+        outline = Color(0x3314213D),
+        outlineVariant = Color(0x1A14213D),
+        error = p.danger,
+    )
+}
 
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFFA2C9FF),
-    onPrimary = Color(0xFF00315C),
-    primaryContainer = Color(0xFF0B4877),
-    onPrimaryContainer = Color(0xFFD3E4FF),
-    secondary = Color(0xFFD8C4A5),
-    onSecondary = Color(0xFF3C2F1B),
-    secondaryContainer = Color(0xFF54462F),
-    onSecondaryContainer = Color(0xFFF4E1C1),
-    tertiary = Color(0xFFFFB68A),
-    onTertiary = Color(0xFF532200),
-    background = Color(0xFF131211),
-    onBackground = Color(0xFFE8E2DA),
-    surface = Color(0xFF131211),
-    onSurface = Color(0xFFE8E2DA),
-    surfaceVariant = Color(0xFF4E4639),
-    onSurfaceVariant = Color(0xFFD1C5B4),
-    surfaceContainerLowest = Color(0xFF0E0D0C),
-    surfaceContainerLow = Color(0xFF1B1A18),
-    surfaceContainer = Color(0xFF201E1C),
-    surfaceContainerHigh = Color(0xFF2A2826),
-    surfaceContainerHighest = Color(0xFF353331),
-    outline = Color(0xFF9A8F80),
-    outlineVariant = Color(0xFF4E4639),
-)
+/** Chữ theo phong cách HyperOS: tiêu đề lớn, đậm (trên máy Xiaomi dùng phông MiSans của hệ thống). */
+private val HyperTypography: Typography = Typography().let { t ->
+    t.copy(
+        headlineLarge = t.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold),
+        headlineMedium = t.headlineMedium.copy(fontWeight = FontWeight.Bold),
+        titleLarge = t.titleLarge.copy(fontWeight = FontWeight.Bold),
+        titleMedium = t.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        titleSmall = t.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+        labelLarge = t.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+    )
+}
 
 @Composable
 fun AppTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (darkTheme) DarkColors else LightColors, content = content)
+    val palette = if (darkTheme) HyperDark else HyperLight
+    MaterialTheme(colorScheme = materialColors(palette), typography = HyperTypography) {
+        CompositionLocalProvider(LocalHyper provides palette, content = content)
+    }
 }
 
 /** Bảng màu cho trang sách và các thanh công cụ khi đọc. */
@@ -120,45 +137,15 @@ fun readerColors(theme: ReaderTheme): ReaderColors = when (theme) {
     )
 }
 
-/** Áp màu theo chủ đề đọc cho các thành phần Material (thanh trượt, công tắc...). */
+/** Thanh công cụ khi đọc: kính sáng trên nền trang sáng, kính tối khi đọc nền đen. */
 @Composable
 fun ReaderChromeTheme(colors: ReaderColors, content: @Composable () -> Unit) {
-    val scheme = if (colors.dark) {
-        darkColorScheme(
-            primary = colors.accent,
-            onPrimary = Color.Black,
-            secondaryContainer = colors.accent.copy(alpha = 0.28f),
-            onSecondaryContainer = colors.onChrome,
-            background = colors.chrome,
-            onBackground = colors.onChrome,
-            surface = colors.chrome,
-            onSurface = colors.onChrome,
-            surfaceVariant = Color(0xFF2B2B2B),
-            onSurfaceVariant = colors.secondaryText,
-            surfaceContainer = colors.chrome,
-            surfaceContainerHigh = Color(0xFF262626),
-            surfaceContainerHighest = Color(0xFF303030),
-            outline = Color(0xFF5E5E5E),
-            outlineVariant = Color(0xFF3A3A3A),
-        )
-    } else {
-        lightColorScheme(
-            primary = colors.accent,
-            onPrimary = Color.White,
-            secondaryContainer = colors.accent.copy(alpha = 0.18f),
-            onSecondaryContainer = colors.onChrome,
-            background = colors.chrome,
-            onBackground = colors.onChrome,
-            surface = colors.chrome,
-            onSurface = colors.onChrome,
-            surfaceVariant = colors.background,
-            onSurfaceVariant = colors.secondaryText,
-            surfaceContainer = colors.chrome,
-            surfaceContainerHigh = colors.background,
-            surfaceContainerHighest = colors.background,
-            outline = colors.secondaryText,
-            outlineVariant = colors.secondaryText.copy(alpha = 0.35f),
+    val palette = if (colors.dark) HyperDark else HyperLight
+    MaterialTheme(colorScheme = materialColors(palette), typography = HyperTypography) {
+        CompositionLocalProvider(
+            LocalHyper provides palette,
+            LocalGlassBackdrop provides colors.background,
+            content = content,
         )
     }
-    MaterialTheme(colorScheme = scheme, content = content)
 }

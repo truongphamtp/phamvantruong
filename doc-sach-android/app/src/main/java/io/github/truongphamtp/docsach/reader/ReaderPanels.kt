@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package io.github.truongphamtp.docsach.reader
 
 import androidx.compose.foundation.background
@@ -8,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,27 +21,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedIconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,12 +42,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -75,6 +58,16 @@ import io.github.truongphamtp.docsach.core.ReaderTheme
 import io.github.truongphamtp.docsach.core.ReadingPosition
 import io.github.truongphamtp.docsach.core.ToolbarSide
 import io.github.truongphamtp.docsach.format.SearchHit
+import io.github.truongphamtp.docsach.ui.GlassGroup
+import io.github.truongphamtp.docsach.ui.GlassIconButton
+import io.github.truongphamtp.docsach.ui.GlassSearchField
+import io.github.truongphamtp.docsach.ui.GroupDivider
+import io.github.truongphamtp.docsach.ui.HyperSegmented
+import io.github.truongphamtp.docsach.ui.HyperSlider
+import io.github.truongphamtp.docsach.ui.HyperSwitch
+import io.github.truongphamtp.docsach.ui.LocalHyper
+import io.github.truongphamtp.docsach.ui.SectionLabel
+import io.github.truongphamtp.docsach.ui.SettingRow
 import io.github.truongphamtp.docsach.ui.readerColors
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -88,126 +81,127 @@ import kotlin.math.roundToInt
 internal fun TocPanel(controller: ReaderController, onNavigate: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        Segmented(
+        HyperSegmented(
             options = listOf("Mục lục", "Dấu trang (${controller.bookmarks.size})"),
             selected = tab,
             onSelect = { tab = it },
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )
         if (tab == 0) TocList(controller, onNavigate) else BookmarkList(controller, onNavigate)
     }
 }
 
 @Composable
+private fun ChipButton(text: String, onClick: () -> Unit) {
+    val p = LocalHyper.current
+    Text(
+        text,
+        color = p.accent,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(p.accent.copy(alpha = 0.12f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
 private fun TocList(controller: ReaderController, onNavigate: () -> Unit) {
+    val p = LocalHyper.current
     val book = controller.book
     val current = remember(controller.chapter, controller.anchor) { controller.currentTocIndex() }
     val state = rememberLazyListState(initialFirstVisibleItemIndex = (current - 3).coerceAtLeast(0))
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        AssistChip(onClick = {
+        ChipButton("Đầu sách") {
             controller.goTo(ReadingPosition(0, 0))
             onNavigate()
-        }, label = { Text("Đầu sách") })
+        }
         book.startPosition?.let { start ->
-            AssistChip(onClick = {
+            ChipButton("Bắt đầu đọc") {
                 controller.goTo(start)
                 onNavigate()
-            }, label = { Text("Bắt đầu đọc") })
+            }
         }
     }
-    LazyColumn(state = state, contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(state = state, contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 20.dp)) {
         itemsIndexed(book.toc) { index, entry ->
             val selected = index == current
             val percent = (book.progress(ReadingPosition(entry.chapter, entry.offset)) * 100).roundToInt()
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (selected) p.accent.copy(alpha = 0.13f) else Color.Transparent)
                     .clickable {
                         controller.goTo(ReadingPosition(entry.chapter, entry.offset))
                         onNavigate()
                     }
-                    .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
-                    .padding(start = (20 + 16 * entry.depth.coerceAtMost(4)).dp, end = 20.dp, top = 12.dp, bottom = 12.dp),
+                    .padding(start = (14 + 16 * entry.depth.coerceAtMost(4)).dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     entry.title,
-                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (selected) p.accent else p.text,
+                    fontSize = 15.sp,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    "$percent%",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 12.dp),
-                )
+                Text("$percent%", color = p.textSecondary, fontSize = 12.sp, modifier = Modifier.padding(start = 12.dp))
             }
         }
         if (book.toc.isEmpty()) {
-            item {
-                Text(
-                    "Sách này không có mục lục.",
-                    modifier = Modifier.padding(20.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            item { Text("Sách này không có mục lục.", modifier = Modifier.padding(20.dp), color = p.textSecondary) }
         }
     }
 }
 
 @Composable
 private fun BookmarkList(controller: ReaderController, onNavigate: () -> Unit) {
+    val p = LocalHyper.current
     val marks = controller.bookmarks
     if (marks.isEmpty()) {
         Text(
             "Chưa có dấu trang.\nBấm nút “Dấu trang” trên thanh công cụ để đánh dấu trang đang đọc.",
             modifier = Modifier.padding(20.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = p.textSecondary,
+            fontSize = 14.sp,
         )
         return
     }
     val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("vi-VN")) }
-    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         items(marks, key = { it.id }) { mark ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        controller.goTo(mark.position)
-                        onNavigate()
+            GlassGroup(Modifier.clickable {
+                controller.goTo(mark.position)
+                onNavigate()
+            }) {
+                Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        val percent = (controller.book.progress(mark.position) * 100).roundToInt()
+                        Text(
+                            "${mark.label} · $percent% · ${dateFormat.format(Date(mark.createdAt))}",
+                            color = p.accent,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(mark.snippet, color = p.text, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     }
-                    .padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    val percent = (controller.book.progress(mark.position) * 100).roundToInt()
-                    Text(
-                        "${mark.label} · $percent% · ${dateFormat.format(Date(mark.createdAt))}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        mark.snippet,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                IconButton(onClick = { controller.removeBookmark(mark) }) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Xoá dấu trang")
+                    GlassIconButton(Icons.Rounded.DeleteOutline, null, onClick = { controller.removeBookmark(mark) }, size = 36.dp)
                 }
             }
-            HorizontalDivider(Modifier.padding(horizontal = 20.dp))
         }
     }
 }
@@ -216,32 +210,20 @@ private fun BookmarkList(controller: ReaderController, onNavigate: () -> Unit) {
 
 @Composable
 internal fun SearchPanel(controller: ReaderController, onNavigate: () -> Unit) {
+    val p = LocalHyper.current
     var query by rememberSaveable { mutableStateOf(controller.searchQuery) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-    OutlinedTextField(
+    GlassSearchField(
         value = query,
         onValueChange = {
             query = it
             controller.search(it)
         },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .focusRequester(focus),
-        singleLine = true,
-        placeholder = { Text("Nhập từ cần tìm…") },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = {
-                    query = ""
-                    controller.search("")
-                }) { Icon(Icons.Filled.Close, contentDescription = "Xoá") }
-            }
-        },
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { controller.search(query) }),
+        placeholder = "Nhập từ cần tìm…",
+        focusRequester = focus,
+        onAction = { controller.search(query) },
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
     )
     val results = controller.searchResults
     val status = when {
@@ -251,25 +233,26 @@ internal fun SearchPanel(controller: ReaderController, onNavigate: () -> Unit) {
         results.size >= 300 -> "Hơn 300 kết quả — hãy gõ cụ thể hơn."
         else -> "${results.size} kết quả"
     }
-    if (controller.searching) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
-    Text(
-        status,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-    )
-    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+    if (controller.searching) {
+        LinearProgressIndicator(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp).clip(CircleShape),
+            color = p.accent,
+            trackColor = p.controlTrack,
+        )
+    }
+    Text(status, color = p.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
+    LazyColumn(contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 20.dp)) {
         items(results) { hit -> SearchRow(controller, hit, onNavigate) }
     }
 }
 
 @Composable
 private fun SearchRow(controller: ReaderController, hit: SearchHit, onNavigate: () -> Unit) {
-    val accent = MaterialTheme.colorScheme.primary
-    val text: AnnotatedString = remember(hit) {
+    val p = LocalHyper.current
+    val text: AnnotatedString = remember(hit, p.accent) {
         buildAnnotatedString {
             append(hit.snippet.substring(0, hit.matchStart))
-            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = accent)) {
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = p.accent, background = p.accent.copy(alpha = 0.12f))) {
                 append(hit.snippet.substring(hit.matchStart, hit.matchEnd))
             }
             append(hit.snippet.substring(hit.matchEnd))
@@ -278,20 +261,22 @@ private fun SearchRow(controller: ReaderController, hit: SearchHit, onNavigate: 
     Column(
         Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
             .clickable {
                 controller.openSearchHit(hit)
                 onNavigate()
             }
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
         Text(
             controller.book.chapterTitle(hit.chapter),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = p.textSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Text(text, color = p.text, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -299,150 +284,144 @@ private fun SearchRow(controller: ReaderController, hit: SearchHit, onNavigate: 
 
 @Composable
 internal fun DisplayPanel(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit, textOptions: Boolean) {
+    val p = LocalHyper.current
     Column(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Section("Màu nền") { ThemePicker(settings.theme) { onChange(settings.copy(theme = it)) } }
+        SectionLabel("Màu nền")
+        ThemePicker(settings.theme) { onChange(settings.copy(theme = it)) }
         if (textOptions) {
-            Section("Cỡ chữ") { FontSizePicker(settings.fontSize) { onChange(settings.copy(fontSize = it)) } }
-            Section("Phông chữ") {
-                Segmented(ReaderFont.entries.map { it.label }, settings.font.ordinal, onSelect = {
-                    onChange(settings.copy(font = ReaderFont.entries[it]))
-                })
-            }
-            Section("Giãn dòng") {
-                val index = ReaderSettings.LINE_SPACINGS.indexOfFirst { abs(it - settings.lineSpacing) < 0.01f }.coerceAtLeast(0)
-                Segmented(ReaderSettings.SPACING_LABELS, index, onSelect = {
-                    onChange(settings.copy(lineSpacing = ReaderSettings.LINE_SPACINGS[it]))
-                })
-            }
-            Section("Lề trang") {
-                Segmented(ReaderSettings.MARGIN_LABELS, settings.margin, onSelect = { onChange(settings.copy(margin = it)) })
-            }
-            Section("Căn chữ") {
-                Segmented(listOf("Đều hai bên", "Lề trái"), if (settings.justify) 0 else 1, onSelect = {
-                    onChange(settings.copy(justify = it == 0))
-                })
-            }
-        }
-        Section("Bố cục trang", "Tự động: mở máy gập hiện 2 trang như sách, gập lại hiện 1 trang.") {
-            Segmented(PageLayout.entries.map { it.label }, settings.pageLayout.ordinal, onSelect = {
-                onChange(settings.copy(pageLayout = PageLayout.entries[it]))
+            Spacer(Modifier.height(6.dp))
+            SectionLabel("Cỡ chữ", trailing = "${settings.fontSize.roundToInt()}")
+            FontSizePicker(settings.fontSize) { onChange(settings.copy(fontSize = it)) }
+            Spacer(Modifier.height(6.dp))
+            SectionLabel("Phông chữ")
+            HyperSegmented(ReaderFont.entries.map { it.label }, settings.font.ordinal, onSelect = {
+                onChange(settings.copy(font = ReaderFont.entries[it]))
+            })
+            SectionLabel("Giãn dòng")
+            val spacing = ReaderSettings.LINE_SPACINGS.indexOfFirst { abs(it - settings.lineSpacing) < 0.01f }.coerceAtLeast(0)
+            HyperSegmented(ReaderSettings.SPACING_LABELS, spacing, onSelect = {
+                onChange(settings.copy(lineSpacing = ReaderSettings.LINE_SPACINGS[it]))
+            })
+            SectionLabel("Lề trang")
+            HyperSegmented(ReaderSettings.MARGIN_LABELS, settings.margin, onSelect = { onChange(settings.copy(margin = it)) })
+            SectionLabel("Căn chữ")
+            HyperSegmented(listOf("Đều hai bên", "Lề trái"), if (settings.justify) 0 else 1, onSelect = {
+                onChange(settings.copy(justify = it == 0))
             })
         }
-        Section("Thanh công cụ") {
-            Segmented(ToolbarSide.entries.map { it.label }, settings.toolbarSide.ordinal, onSelect = {
-                onChange(settings.copy(toolbarSide = ToolbarSide.entries[it]))
-            })
-            SwitchRow("Luôn hiện khi đọc", settings.pinToolbar) { onChange(settings.copy(pinToolbar = it)) }
+        Spacer(Modifier.height(6.dp))
+        SectionLabel("Bố cục trang")
+        HyperSegmented(PageLayout.entries.map { it.label }, settings.pageLayout.ordinal, onSelect = {
+            onChange(settings.copy(pageLayout = PageLayout.entries[it]))
+        })
+        Text(
+            "Tự động: mở máy gập hiện 2 trang như sách, gập lại hiện 1 trang.",
+            color = p.textSecondary,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(horizontal = 6.dp),
+        )
+        Spacer(Modifier.height(6.dp))
+        SectionLabel("Thanh công cụ")
+        HyperSegmented(ToolbarSide.entries.map { it.label }, settings.toolbarSide.ordinal, onSelect = {
+            onChange(settings.copy(toolbarSide = ToolbarSide.entries[it]))
+        })
+        GlassGroup {
+            SettingRow("Luôn hiện khi đọc") {
+                HyperSwitch(settings.pinToolbar, { onChange(settings.copy(pinToolbar = it)) })
+            }
         }
-        Section("Độ sáng") {
-            SwitchRow("Theo hệ thống", settings.brightness < 0f) {
-                onChange(settings.copy(brightness = if (it) -1f else 0.5f))
+        Spacer(Modifier.height(6.dp))
+        SectionLabel("Độ sáng")
+        GlassGroup {
+            SettingRow("Theo hệ thống") {
+                HyperSwitch(settings.brightness < 0f, { onChange(settings.copy(brightness = if (it) -1f else 0.5f)) })
             }
             if (settings.brightness >= 0f) {
-                Slider(
-                    value = settings.brightness,
-                    onValueChange = { onChange(settings.copy(brightness = it.coerceIn(0.02f, 1f))) },
-                    valueRange = 0.02f..1f,
-                )
+                GroupDivider()
+                Row(Modifier.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.LightMode, contentDescription = null, tint = p.textSecondary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    HyperSlider(
+                        value = settings.brightness,
+                        onValueChange = { onChange(settings.copy(brightness = it.coerceIn(0.02f, 1f))) },
+                        valueRange = 0.02f..1f,
+                        height = 30.dp,
+                    )
+                }
             }
         }
-        Section("Lật trang") {
-            SwitchRow("Hiệu ứng trượt khi lật trang", settings.pageAnimation) { onChange(settings.copy(pageAnimation = it)) }
-            SwitchRow("Dùng phím âm lượng để lật trang", settings.volumeKeys) { onChange(settings.copy(volumeKeys = it)) }
-            SwitchRow("Giữ màn hình luôn sáng khi đọc", settings.keepScreenOn) { onChange(settings.copy(keepScreenOn = it)) }
+        Spacer(Modifier.height(6.dp))
+        SectionLabel("Lật trang")
+        GlassGroup {
+            SettingRow("Hiệu ứng trượt") {
+                HyperSwitch(settings.pageAnimation, { onChange(settings.copy(pageAnimation = it)) })
+            }
+            GroupDivider()
+            SettingRow("Lật bằng phím âm lượng") {
+                HyperSwitch(settings.volumeKeys, { onChange(settings.copy(volumeKeys = it)) })
+            }
+            GroupDivider()
+            SettingRow("Giữ màn hình luôn sáng") {
+                HyperSwitch(settings.keepScreenOn, { onChange(settings.copy(keepScreenOn = it)) })
+            }
         }
         if (textOptions) {
-            Section("Tốc độ đọc to", "${"%.1f".format(settings.speechRate)}×") {
-                Slider(
-                    value = settings.speechRate,
-                    onValueChange = { onChange(settings.copy(speechRate = (it * 10).roundToInt() / 10f)) },
-                    valueRange = 0.5f..2f,
-                    steps = 14,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun Section(title: String, hint: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-        }
-        if (hint != null) {
-            Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        content()
-    }
-}
-
-@Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .clickable { onChange(!checked) }
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange)
-    }
-}
-
-@Composable
-internal fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    SingleChoiceSegmentedButtonRow(modifier.fillMaxWidth()) {
-        options.forEachIndexed { index, label ->
-            SegmentedButton(
-                selected = index == selected,
-                onClick = { onSelect(index) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                icon = {},
-            ) {
-                Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-            }
+            Spacer(Modifier.height(6.dp))
+            SectionLabel("Tốc độ đọc to", trailing = "${"%.1f".format(settings.speechRate)}×")
+            HyperSlider(
+                value = settings.speechRate,
+                onValueChange = { onChange(settings.copy(speechRate = (it * 10).roundToInt() / 10f)) },
+                valueRange = 0.5f..2f,
+                steps = 14,
+                height = 30.dp,
+            )
         }
     }
 }
 
 @Composable
 private fun ThemePicker(selected: ReaderTheme, onSelect: (ReaderTheme) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    val p = LocalHyper.current
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         ReaderTheme.entries.forEach { theme ->
             val c = readerColors(theme)
             val isSelected = theme == selected
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .clip(MaterialTheme.shapes.medium)
+                    .clip(RoundedCornerShape(18.dp))
                     .clickable { onSelect(theme) }
-                    .padding(4.dp),
+                    .padding(6.dp),
             ) {
                 Box(
                     Modifier
-                        .size(52.dp)
+                        .size(56.dp)
+                        .border(if (isSelected) 2.5.dp else 0.dp, if (isSelected) p.accent else Color.Transparent, CircleShape)
+                        .padding(4.dp)
                         .clip(CircleShape)
                         .background(c.background)
-                        .border(
-                            width = if (isSelected) 3.dp else 1.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                            shape = CircleShape,
-                        ),
+                        .border(1.dp, p.divider, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Aa", color = c.text, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                    if (isSelected) {
+                        Icon(Icons.Rounded.Check, contentDescription = null, tint = c.text, modifier = Modifier.size(22.dp))
+                    } else {
+                        Text("Aa", color = c.text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    }
                 }
                 Spacer(Modifier.height(4.dp))
-                Text(theme.label, style = MaterialTheme.typography.labelSmall)
+                Text(
+                    theme.label,
+                    color = if (isSelected) p.accent else p.text,
+                    fontSize = 12.sp,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                )
             }
         }
     }
@@ -450,23 +429,34 @@ private fun ThemePicker(selected: ReaderTheme, onSelect: (ReaderTheme) -> Unit) 
 
 @Composable
 private fun FontSizePicker(size: Float, onChange: (Float) -> Unit) {
+    val p = LocalHyper.current
     val sizes = ReaderSettings.FONT_SIZES
     val index = sizes.indexOfFirst { it >= size - 0.01f }.let { if (it < 0) sizes.size - 1 else it }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedIconButton(onClick = { onChange(sizes[(index - 1).coerceAtLeast(0)]) }, enabled = index > 0) {
-            Text("A", fontSize = 13.sp)
-        }
-        Slider(
+        GlassStepButton("A", 13) { onChange(sizes[(index - 1).coerceAtLeast(0)]) }
+        HyperSlider(
             value = index.toFloat(),
             onValueChange = { onChange(sizes[it.roundToInt().coerceIn(0, sizes.size - 1)]) },
             valueRange = 0f..(sizes.size - 1).toFloat(),
             steps = sizes.size - 2,
-            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+            height = 34.dp,
+            modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
         )
-        OutlinedIconButton(onClick = { onChange(sizes[(index + 1).coerceAtMost(sizes.size - 1)]) }, enabled = index < sizes.size - 1) {
-            Text("A", fontSize = 21.sp)
-        }
-        Spacer(Modifier.width(8.dp))
-        Text("${size.roundToInt()}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(24.dp))
+        GlassStepButton("A", 21) { onChange(sizes[(index + 1).coerceAtMost(sizes.size - 1)]) }
+    }
+}
+
+@Composable
+private fun GlassStepButton(label: String, fontSize: Int, onClick: () -> Unit) {
+    val p = LocalHyper.current
+    Box(
+        Modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(p.controlTrack)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = p.text, fontSize = fontSize.sp, fontWeight = FontWeight.SemiBold)
     }
 }

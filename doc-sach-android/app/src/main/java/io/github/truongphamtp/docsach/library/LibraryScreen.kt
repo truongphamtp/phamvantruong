@@ -2,9 +2,15 @@
 
 package io.github.truongphamtp.docsach.library
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,37 +32,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material.icons.automirrored.filled.ViewList
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.automirrored.rounded.ViewList
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeFloatingActionButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,21 +65,38 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import io.github.truongphamtp.docsach.core.BookRecord
 import io.github.truongphamtp.docsach.core.LibraryPrefs
 import io.github.truongphamtp.docsach.core.LibrarySort
 import io.github.truongphamtp.docsach.core.LibraryView
 import io.github.truongphamtp.docsach.core.ToolbarSide
 import io.github.truongphamtp.docsach.format.TextFold
+import io.github.truongphamtp.docsach.ui.AccentTile
 import io.github.truongphamtp.docsach.ui.GeneratedCover
+import io.github.truongphamtp.docsach.ui.GlassSearchField
+import io.github.truongphamtp.docsach.ui.GlassToast
+import io.github.truongphamtp.docsach.ui.HyperDialog
+import io.github.truongphamtp.docsach.ui.LiquidBackground
+import io.github.truongphamtp.docsach.ui.LocalHazeState
+import io.github.truongphamtp.docsach.ui.LocalHyper
+import io.github.truongphamtp.docsach.ui.PillButton
 import io.github.truongphamtp.docsach.ui.PinnedRail
 import io.github.truongphamtp.docsach.ui.RailAction
+import io.github.truongphamtp.docsach.ui.ThinProgress
+import io.github.truongphamtp.docsach.ui.glass
+import kotlinx.coroutines.delay
 import java.text.Collator
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -120,15 +134,23 @@ fun LibraryScreen(
     toolbarSide: ToolbarSide = ToolbarSide.RIGHT,
     modifier: Modifier = Modifier,
 ) {
-    var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var showSort by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<BookRecord?>(null) }
-    val snackbar = remember { SnackbarHostState() }
+    var toast by remember { mutableStateOf<String?>(null) }
+    val searchFocus = remember { FocusRequester() }
+    val hazeState = remember { HazeState() }
+
     LaunchedEffect(message) {
         if (message != null) {
-            snackbar.showSnackbar(message)
+            toast = message
             onMessageShown()
+        }
+    }
+    LaunchedEffect(toast) {
+        if (toast != null) {
+            delay(3200)
+            toast = null
         }
     }
 
@@ -140,21 +162,20 @@ fun LibraryScreen(
     val continueBook = if (folded.isEmpty()) books.filter { it.lastOpenedAt > 0 }.maxByOrNull { it.lastOpenedAt } else null
 
     val actions = listOf(
-        RailAction(Icons.Filled.Search, "Tìm", selected = searching) {
-            searching = !searching
-            if (!searching) query = ""
-        },
-        RailAction(Icons.AutoMirrored.Filled.Sort, "Sắp xếp") { showSort = true },
+        RailAction(Icons.Rounded.Search, "Tìm") { runCatching { searchFocus.requestFocus() } },
+        RailAction(Icons.AutoMirrored.Rounded.Sort, "Sắp xếp") { showSort = true },
         if (prefs.view == LibraryView.GRID) {
-            RailAction(Icons.AutoMirrored.Filled.ViewList, "Danh sách") { onPrefsChange(prefs.copy(view = LibraryView.LIST)) }
+            RailAction(Icons.AutoMirrored.Rounded.ViewList, "Danh sách") { onPrefsChange(prefs.copy(view = LibraryView.LIST)) }
         } else {
-            RailAction(Icons.Filled.GridView, "Lưới") { onPrefsChange(prefs.copy(view = LibraryView.GRID)) }
+            RailAction(Icons.Rounded.GridView, "Lưới") { onPrefsChange(prefs.copy(view = LibraryView.GRID)) }
         },
     )
     val onRight = toolbarSide == ToolbarSide.RIGHT
 
-    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(Modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize()) {
+        // Nền "chất lỏng" làm nguồn cho hiệu ứng kính mờ.
+        LiquidBackground(Modifier.fillMaxSize().haze(hazeState))
+        CompositionLocalProvider(LocalHazeState provides hazeState) {
             Row(Modifier.fillMaxSize()) {
                 if (!onRight) LibraryRail(actions, onAddBooks)
                 Column(
@@ -168,25 +189,14 @@ fun LibraryScreen(
                             ),
                         ),
                 ) {
-                    LibraryHeader(books.size, prefs.sort)
-                    if (searching) {
-                        OutlinedTextField(
-                            value = query,
-                            onValueChange = { query = it },
-                            singleLine = true,
-                            placeholder = { Text("Tìm theo tên sách hoặc tác giả") },
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                            trailingIcon = {
-                                IconButton(onClick = {
-                                    query = ""
-                                    searching = false
-                                }) { Icon(Icons.Filled.Close, contentDescription = "Đóng tìm kiếm") }
-                            },
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        )
-                    }
-                    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
+                    LibraryHeader(books.size, prefs.sort, busy)
+                    GlassSearchField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = "Tìm sách hoặc tác giả",
+                        focusRequester = searchFocus,
+                        modifier = Modifier.padding(start = 16.dp, end = if (onRight) 4.dp else 16.dp, top = 4.dp, bottom = 8.dp),
+                    )
                     if (books.isEmpty()) {
                         EmptyLibrary(onAddBooks)
                     } else {
@@ -202,13 +212,17 @@ fun LibraryScreen(
                 }
                 if (onRight) LibraryRail(actions, onAddBooks)
             }
-            SnackbarHost(
-                snackbar,
+            AnimatedVisibility(
+                visible = toast != null,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
-                    .padding(bottom = 12.dp),
-            )
+                    .padding(bottom = 18.dp, start = 24.dp, end = 24.dp),
+                enter = fadeIn() + slideInVertically { it },
+                exit = fadeOut() + slideOutVertically { it },
+            ) {
+                GlassToast(toast.orEmpty())
+            }
         }
     }
 
@@ -236,69 +250,88 @@ fun LibraryScreen(
 
 @Composable
 private fun LibraryRail(actions: List<RailAction>, onAddBooks: () -> Unit) {
+    val p = LocalHyper.current
     PinnedRail(
         actions = actions,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         header = {
-            Icon(
-                Icons.AutoMirrored.Filled.MenuBook,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 8.dp).size(28.dp),
-            )
+            AccentTile(Icons.AutoMirrored.Rounded.MenuBook, size = 42.dp)
+            Spacer(Modifier.height(10.dp))
         },
         footer = {
+            Spacer(Modifier.height(8.dp))
             // Nút chính đặt thấp nhất bên phải: vừa tầm ngón cái tay phải.
-            LargeFloatingActionButton(
-                onClick = onAddBooks,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(68.dp),
+            Box(
+                Modifier
+                    .size(58.dp)
+                    .shadow(14.dp, CircleShape, ambientColor = p.accent, spotColor = p.accent)
+                    .clip(CircleShape)
+                    .background(Brush.verticalGradient(listOf(p.accentLight, p.accent)))
+                    .border(1.dp, Color.White.copy(alpha = 0.55f), CircleShape)
+                    .clickable(onClick = onAddBooks),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "Thêm sách")
+                Icon(Icons.Rounded.Add, contentDescription = "Thêm sách", tint = p.onAccent, modifier = Modifier.size(30.dp))
             }
+            Spacer(Modifier.height(5.dp))
+            Text("Thêm sách", color = p.text.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(4.dp))
-            Text("Thêm sách", style = MaterialTheme.typography.labelSmall)
-            Spacer(Modifier.height(20.dp))
         },
     )
 }
 
 @Composable
-private fun LibraryHeader(count: Int, sort: LibrarySort) {
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp)) {
-        Text("Thư viện", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-        Text(
-            if (count == 0) "Chưa có sách" else "$count cuốn · ${sort.label.lowercase()}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+private fun LibraryHeader(count: Int, sort: LibrarySort, busy: Boolean) {
+    val p = LocalHyper.current
+    Row(
+        Modifier.fillMaxWidth().padding(start = 22.dp, end = 16.dp, top = 18.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Thư viện", color = p.text, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+            Text(
+                if (count == 0) "Chưa có sách" else "$count cuốn · ${sort.label.lowercase()}",
+                color = p.textSecondary,
+                fontSize = 14.sp,
+            )
+        }
+        if (busy) {
+            Row(
+                Modifier.glass(CircleShape).padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(16.dp), color = p.accent, strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("Đang thêm sách…", color = p.text, fontSize = 13.sp)
+            }
+        }
     }
 }
 
 @Composable
 private fun EmptyLibrary(onAddBooks: () -> Unit) {
-    Column(
-        Modifier.fillMaxSize().padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            Icons.AutoMirrored.Filled.MenuBook,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(72.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        Text("Thư viện đang trống", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Bấm “Thêm sách” ở thanh công cụ bên phải để mở file EPUB, PDF hoặc TXT trong máy. " +
-                "File EPUB bạn xuất để gửi sang Kindle cũng mở được ở đây.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(20.dp))
-        Button(onClick = onAddBooks) { Text("Thêm sách") }
+    val p = LocalHyper.current
+    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier
+                .widthIn(max = 420.dp)
+                .glass(RoundedCornerShape(32.dp), elevation = 10.dp)
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            AccentTile(Icons.AutoMirrored.Rounded.MenuBook, size = 64.dp)
+            Spacer(Modifier.height(18.dp))
+            Text("Thư viện đang trống", color = p.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Bấm “Thêm sách” ở thanh công cụ bên phải để mở file EPUB, PDF hoặc TXT trong máy. " +
+                    "File EPUB bạn xuất để gửi sang Kindle cũng mở được ở đây.",
+                color = p.textSecondary,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(20.dp))
+            PillButton("Thêm sách", onClick = onAddBooks, icon = Icons.Rounded.Add)
+        }
     }
 }
 
@@ -311,14 +344,15 @@ private fun BookGrid(
     onOpen: (BookRecord) -> Unit,
     onLongPress: (BookRecord) -> Unit,
 ) {
+    val p = LocalHyper.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 600.dp
         val columns = if (view == LibraryView.GRID) GridCells.Adaptive(if (wide) 132.dp else 104.dp) else GridCells.Adaptive(if (wide) 340.dp else 280.dp)
         LazyVerticalGrid(
             columns = columns,
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp),
+            contentPadding = PaddingValues(start = 12.dp, end = 8.dp, top = 4.dp, bottom = 96.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(if (view == LibraryView.GRID) 14.dp else 4.dp),
+            verticalArrangement = Arrangement.spacedBy(if (view == LibraryView.GRID) 12.dp else 8.dp),
         ) {
             if (continueBook != null) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "continue") {
@@ -334,11 +368,7 @@ private fun BookGrid(
             }
             if (books.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text(
-                        "Không có sách nào khớp.",
-                        modifier = Modifier.padding(20.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Text("Không có sách nào khớp.", modifier = Modifier.padding(20.dp), color = p.textSecondary)
                 }
             }
         }
@@ -346,15 +376,17 @@ private fun BookGrid(
 }
 
 @Composable
-private fun Cover(book: BookRecord, coverLoader: CoverLoader?, modifier: Modifier) {
+private fun Cover(book: BookRecord, coverLoader: CoverLoader?, modifier: Modifier, radius: Int = 14) {
+    val p = LocalHyper.current
     val cover by produceState<ImageBitmap?>(null, book.id, book.coverFileName) {
         value = coverLoader?.load(book)
     }
+    val shape = RoundedCornerShape(radius.dp)
     Box(
         modifier
             .aspectRatio(2f / 3f)
-            .shadow(3.dp, RoundedCornerShape(6.dp))
-            .clip(RoundedCornerShape(6.dp)),
+            .shadow(8.dp, shape, ambientColor = p.shadow, spotColor = p.shadow)
+            .clip(shape),
     ) {
         val bitmap = cover
         if (bitmap != null) {
@@ -362,96 +394,98 @@ private fun Cover(book: BookRecord, coverLoader: CoverLoader?, modifier: Modifie
         } else {
             GeneratedCover(book.title, book.author, book.format, Modifier.fillMaxSize())
         }
+        // Lớp bóng kính mỏng trên bìa.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.18f), Color.Transparent, Color.Transparent)))
+                .border(1.dp, Color.White.copy(alpha = 0.25f), shape),
+        )
     }
 }
 
 @Composable
 private fun ContinueCard(book: BookRecord, coverLoader: CoverLoader?, wide: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+    val p = LocalHyper.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 6.dp)
+            .glass(RoundedCornerShape(28.dp), elevation = 8.dp)
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Cover(book, coverLoader, Modifier.width(if (wide) 92.dp else 72.dp))
+        Cover(book, coverLoader, Modifier.width(if (wide) 92.dp else 74.dp), radius = 12)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text("ĐỌC TIẾP", color = p.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                book.title,
+                color = p.text,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (book.author.isNotBlank()) {
+                Text(book.author, color = p.textSecondary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.height(10.dp))
+            ThinProgress(book.progress, height = 6.dp)
+            Spacer(Modifier.height(6.dp))
+            Text("Đã đọc ${(book.progress * 100).roundToInt()}%", color = p.textSecondary, fontSize = 12.sp)
+        }
+        if (wide) {
             Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Đọc tiếp", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                Text(
-                    book.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (book.author.isNotBlank()) {
-                    Text(book.author, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Spacer(Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { book.progress },
-                    modifier = Modifier.fillMaxWidth(),
-                    gapSize = 0.dp,
-                    drawStopIndicator = {},
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Đã đọc ${(book.progress * 100).roundToInt()}%",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (wide) {
-                Spacer(Modifier.width(16.dp))
-                FilledTonalButton(onClick = onClick) { Text("Đọc tiếp") }
-            }
+            PillButton("Đọc tiếp", onClick = onClick, icon = Icons.Rounded.PlayArrow)
         }
     }
 }
 
 @Composable
 private fun BookTile(book: BookRecord, coverLoader: CoverLoader?, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val p = LocalHyper.current
     Column(
         Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(18.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(4.dp),
+            .padding(6.dp),
     ) {
         Box {
             Cover(book, coverLoader, Modifier.fillMaxWidth())
             if (book.lastOpenedAt == 0L) {
                 Text(
                     "MỚI",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    color = p.onAccent,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier
-                        .padding(6.dp)
-                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                        .padding(8.dp)
+                        .clip(CircleShape)
+                        .background(Brush.horizontalGradient(listOf(p.accentLight, p.accent)))
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             }
         }
         if (book.progress > 0f) {
-            LinearProgressIndicator(
-                progress = { book.progress },
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp).height(3.dp),
-                gapSize = 0.dp,
-                drawStopIndicator = {},
-            )
+            ThinProgress(book.progress, Modifier.padding(top = 8.dp, start = 2.dp, end = 2.dp))
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             book.title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
+            color = p.text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            lineHeight = 18.sp,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
             if (book.progress > 0f) "${(book.progress * 100).roundToInt()}% · ${book.format.label}" else book.author.ifBlank { book.format.label },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = p.textSecondary,
+            fontSize = 12.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -460,31 +494,29 @@ private fun BookTile(book: BookRecord, coverLoader: CoverLoader?, onClick: () ->
 
 @Composable
 private fun BookRow(book: BookRecord, coverLoader: CoverLoader?, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val p = LocalHyper.current
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .glass(RoundedCornerShape(22.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(8.dp),
+            .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Cover(book, coverLoader, Modifier.width(52.dp))
+        Cover(book, coverLoader, Modifier.width(52.dp), radius = 10)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(book.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(book.title, color = p.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (book.author.isNotBlank()) {
-                Text(
-                    book.author,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Text(book.author, color = p.textSecondary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            Spacer(Modifier.height(6.dp))
+            if (book.progress > 0f) ThinProgress(book.progress, Modifier.padding(end = 40.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 "${book.format.label} · ${if (book.lastOpenedAt == 0L) "chưa đọc" else "đã đọc ${(book.progress * 100).roundToInt()}%"}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = p.textSecondary,
+                fontSize = 12.sp,
             )
         }
     }
@@ -492,65 +524,69 @@ private fun BookRow(book: BookRecord, coverLoader: CoverLoader?, onClick: () -> 
 
 @Composable
 private fun SortDialog(current: LibrarySort, onDismiss: () -> Unit, onSelect: (LibrarySort) -> Unit) {
-    AlertDialog(
+    val p = LocalHyper.current
+    HyperDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Sắp xếp theo") },
-        text = {
-            Column {
-                LibrarySort.entries.forEach { sort ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onSelect(sort) }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = sort == current, onClick = { onSelect(sort) })
-                        Text(sort.label, style = MaterialTheme.typography.bodyLarge)
-                    }
+        title = "Sắp xếp theo",
+        confirmText = "Xong",
+        onConfirm = onDismiss,
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            LibrarySort.entries.forEach { sort ->
+                val isCurrent = sort == current
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (isCurrent) p.accent.copy(alpha = 0.12f) else Color.Transparent)
+                        .clickable { onSelect(sort) }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        sort.label,
+                        color = if (isCurrent) p.accent else p.text,
+                        fontSize = 16.sp,
+                        fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (isCurrent) Icon(Icons.Rounded.Check, contentDescription = null, tint = p.accent)
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } },
-    )
+        }
+    }
 }
 
 @Composable
 private fun BookDialog(book: BookRecord, onDismiss: () -> Unit, onOpen: () -> Unit, onDelete: () -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(book.title, maxLines = 3, overflow = TextOverflow.Ellipsis) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (book.author.isNotBlank()) Text("Tác giả: ${book.author}")
-                Text("Định dạng: ${book.format.label} · ${formatSize(book.sizeBytes)}")
-                Text("Đã đọc: ${(book.progress * 100).roundToInt()}% · ${book.bookmarks.size} dấu trang")
-                if (confirmDelete) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Xoá cuốn sách này khỏi thư viện? Tệp gốc trong máy của bạn không bị ảnh hưởng.",
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            if (confirmDelete) {
-                TextButton(onClick = onDelete) { Text("Xoá", color = MaterialTheme.colorScheme.error) }
-            } else {
-                TextButton(onClick = onOpen) { Text("Mở sách") }
-            }
-        },
-        dismissButton = {
-            if (confirmDelete) {
-                TextButton(onClick = { confirmDelete = false }) { Text("Huỷ") }
-            } else {
-                TextButton(onClick = { confirmDelete = true }) { Text("Xoá khỏi thư viện") }
-            }
-        },
-    )
+    val info = buildString {
+        if (book.author.isNotBlank()) append("Tác giả: ${book.author}\n")
+        append("${book.format.label} · ${formatSize(book.sizeBytes)} · đã đọc ${(book.progress * 100).roundToInt()}%")
+        if (book.bookmarks.isNotEmpty()) append(" · ${book.bookmarks.size} dấu trang")
+    }
+    if (confirmDelete) {
+        HyperDialog(
+            onDismissRequest = onDismiss,
+            title = "Xoá “${book.title}”?",
+            message = "Sách sẽ bị xoá khỏi thư viện cùng dấu trang. Tệp gốc trong máy của bạn không bị ảnh hưởng.",
+            confirmText = "Xoá",
+            onConfirm = onDelete,
+            dismissText = "Huỷ",
+            onDismiss = { confirmDelete = false },
+            danger = true,
+        )
+    } else {
+        HyperDialog(
+            onDismissRequest = onDismiss,
+            title = book.title,
+            message = info,
+            confirmText = "Mở sách",
+            onConfirm = onOpen,
+            dismissText = "Xoá khỏi thư viện",
+            onDismiss = { confirmDelete = true },
+        )
+    }
 }
 
 private fun formatSize(bytes: Long): String = when {

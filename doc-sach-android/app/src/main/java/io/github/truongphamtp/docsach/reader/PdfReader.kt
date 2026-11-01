@@ -36,15 +36,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FormatSize
-import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -56,6 +58,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -72,6 +75,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -84,6 +89,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
@@ -96,7 +102,19 @@ import io.github.truongphamtp.docsach.core.ReaderSettings
 import io.github.truongphamtp.docsach.core.ReaderTheme
 import io.github.truongphamtp.docsach.core.ReadingPosition
 import io.github.truongphamtp.docsach.core.ToolbarSide
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
+import io.github.truongphamtp.docsach.ui.AccentTile
 import io.github.truongphamtp.docsach.ui.FloatingRail
+import io.github.truongphamtp.docsach.ui.GlassGroup
+import io.github.truongphamtp.docsach.ui.GlassIconButton
+import io.github.truongphamtp.docsach.ui.GlassSearchField
+import io.github.truongphamtp.docsach.ui.HyperSlider
+import io.github.truongphamtp.docsach.ui.LocalHazeState
+import io.github.truongphamtp.docsach.ui.LocalHyper
+import io.github.truongphamtp.docsach.ui.PillButton
+import io.github.truongphamtp.docsach.ui.SectionLabel
+import io.github.truongphamtp.docsach.ui.glass
 import io.github.truongphamtp.docsach.ui.LocalBackHandler
 import io.github.truongphamtp.docsach.ui.LocalReaderPlatform
 import io.github.truongphamtp.docsach.ui.PinnedRail
@@ -275,25 +293,28 @@ fun PdfReaderScreen(
     }
 
     val actions = listOf(
-        RailAction(Icons.AutoMirrored.Filled.ArrowBack, "Thư viện", onClick = onBack),
-        RailAction(Icons.Filled.GridView, "Trang", selected = panel == PdfPanel.PAGES) { openPanel(PdfPanel.PAGES) },
-        RailAction(Icons.Filled.FormatSize, "Hiển thị", selected = panel == PdfPanel.DISPLAY) { openPanel(PdfPanel.DISPLAY) },
+        RailAction(Icons.AutoMirrored.Rounded.ArrowBackIos, "Thư viện", onClick = onBack),
+        RailAction(Icons.Rounded.GridView, "Trang", selected = panel == PdfPanel.PAGES) { openPanel(PdfPanel.PAGES) },
+        RailAction(Icons.Rounded.TextFields, "Hiển thị", selected = panel == PdfPanel.DISPLAY) { openPanel(PdfPanel.DISPLAY) },
         RailAction(
-            if (controller.isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+            if (controller.isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
             "Dấu trang",
             selected = controller.isBookmarked,
         ) { controller.toggleBookmark() },
     )
 
+    val hazeState = remember { HazeState() }
     ReaderChromeTheme(colors) {
+        CompositionLocalProvider(LocalHazeState provides hazeState) {
         Box(modifier.fillMaxSize().background(colors.background)) {
             Row(Modifier.fillMaxSize()) {
-                if (settings.pinToolbar && !railOnRight) PinnedRail(actions, containerColor = colors.chrome)
+                if (settings.pinToolbar && !railOnRight) PinnedRail(actions)
                 var origin by remember { mutableStateOf(Offset.Zero) }
                 BoxWithConstraints(
                     Modifier
                         .weight(1f)
                         .fillMaxHeight()
+                        .haze(hazeState)
                         .windowInsetsPadding(WindowInsets.displayCutout)
                         .onGloballyPositioned { origin = it.positionInWindow() },
                 ) {
@@ -375,7 +396,7 @@ fun PdfReaderScreen(
                         Text("${(controller.progress * 100).roundToInt()}%", fontSize = 12.sp, color = colors.secondaryText)
                     }
                 }
-                if (settings.pinToolbar && railOnRight) PinnedRail(actions, containerColor = colors.chrome)
+                if (settings.pinToolbar && railOnRight) PinnedRail(actions)
             }
 
             AnimatedVisibility(
@@ -384,16 +405,22 @@ fun PdfReaderScreen(
                 enter = fadeIn() + slideInVertically { -it },
                 exit = fadeOut() + slideOutVertically { -it },
             ) {
-                Surface(color = colors.chrome, shadowElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        controller.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .windowInsetsPadding(WindowInsets.statusBars)
-                            .padding(horizontal = 24.dp, vertical = 14.dp),
-                    )
+                val p = LocalHyper.current
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .glass(RoundedCornerShape(26.dp), elevation = 10.dp)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AccentTile(Icons.Rounded.PictureAsPdf, size = 38.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(controller.title, color = p.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${controller.pageCount} trang", color = p.textSecondary, fontSize = 12.sp)
+                    }
                 }
             }
             AnimatedVisibility(
@@ -405,7 +432,7 @@ fun PdfReaderScreen(
                 PdfBottomBar(controller, colors.chrome, railOnRight, reserveRail = false)
             }
             if (!settings.pinToolbar) {
-                Box(Modifier.fillMaxSize().padding(top = 72.dp, bottom = 118.dp)) {
+                Box(Modifier.fillMaxSize().padding(top = 96.dp, bottom = 128.dp)) {
                     AnimatedVisibility(
                         visible = menuVisible,
                         modifier = Modifier.align(BiasAlignment(if (railOnRight) 1f else -1f, 0.3f)),
@@ -430,6 +457,7 @@ fun PdfReaderScreen(
                     PdfPanel.DISPLAY -> DisplayPanel(settings, onSettingsChange, textOptions = false)
                 }
             }
+        }
         }
     }
 }
@@ -460,6 +488,8 @@ private fun PdfPage(
             Modifier
                 .align(alignment)
                 .size(with(density) { w.toDp() }, with(density) { h.toDp() })
+                .shadow(6.dp, RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(if (invert) Color.Black else Color.White),
         ) {
             bitmap?.let {
@@ -477,39 +507,46 @@ private fun PdfPage(
 
 @Composable
 private fun PdfBottomBar(controller: PdfReaderController, chrome: Color, railOnRight: Boolean, reserveRail: Boolean) {
+    val p = LocalHyper.current
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
     val value = if (dragging) dragValue else controller.progress
-    val pageLabel = ((if (dragging) dragValue else controller.progress) * (controller.pageCount - 1)).roundToInt() + 1
-    Surface(color = chrome, shadowElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-        Column(
-            Modifier
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(
-                    start = if (!railOnRight && reserveRail) 96.dp else 24.dp,
-                    end = if (railOnRight && reserveRail) 96.dp else 24.dp,
-                    top = 10.dp,
-                    bottom = 6.dp,
-                ),
-        ) {
-            Text("Trang $pageLabel / ${controller.pageCount}", style = MaterialTheme.typography.bodyMedium)
-            Slider(
-                value = value,
-                onValueChange = {
-                    dragging = true
-                    dragValue = it
-                },
-                onValueChangeFinished = {
-                    controller.goToFraction(dragValue)
-                    dragging = false
-                },
+    val pageLabel = (value * (controller.pageCount - 1)).roundToInt() + 1
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(
+                start = if (!railOnRight && reserveRail) 96.dp else 12.dp,
+                end = if (railOnRight && reserveRail) 96.dp else 12.dp,
+                top = 8.dp,
+                bottom = 10.dp,
             )
+            .glass(RoundedCornerShape(28.dp), elevation = 10.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Trang $pageLabel / ${controller.pageCount}", color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text("${(value * 100).roundToInt()}%", color = p.textSecondary, fontSize = 12.sp)
         }
+        HyperSlider(
+            value = value,
+            onValueChange = {
+                dragging = true
+                dragValue = it
+            },
+            onValueChangeFinished = {
+                if (dragging) controller.goToFraction(dragValue)
+                dragging = false
+            },
+            knob = true,
+        )
     }
 }
 
 @Composable
 private fun PdfPagesPanel(controller: PdfReaderController, onNavigate: () -> Unit) {
+    val p = LocalHyper.current
     var input by rememberSaveable { mutableStateOf("") }
     fun go() {
         val number = input.trim().toIntOrNull() ?: return
@@ -517,52 +554,46 @@ private fun PdfPagesPanel(controller: PdfReaderController, onNavigate: () -> Uni
         onNavigate()
     }
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        OutlinedTextField(
+        GlassSearchField(
             value = input,
             onValueChange = { text -> input = text.filter { it.isDigit() }.take(6) },
-            label = { Text("Đi tới trang (1–${controller.pageCount})") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { go() }),
+            placeholder = "Đi tới trang (1–${controller.pageCount})",
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Go,
+            onAction = { go() },
+            leadingIcon = null,
             modifier = Modifier.weight(1f),
         )
-        Button(onClick = { go() }) { Text("Đi") }
+        PillButton("Đi", onClick = { go() })
     }
     Spacer(Modifier.height(8.dp))
-    Text(
-        "Dấu trang",
-        style = MaterialTheme.typography.titleSmall,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-    )
+    SectionLabel("Dấu trang", modifier = Modifier.padding(horizontal = 16.dp))
     if (controller.bookmarks.isEmpty()) {
         Text(
             "Chưa có dấu trang. Bấm nút “Dấu trang” trên thanh công cụ để đánh dấu trang đang xem.",
-            modifier = Modifier.padding(horizontal = 20.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp),
+            color = p.textSecondary,
+            fontSize = 14.sp,
         )
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         items(controller.bookmarks, key = { it.id }) { mark ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        controller.goTo(mark.position.chapter)
-                        onNavigate()
-                    }
-                    .padding(start = 20.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(mark.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                IconButton(onClick = { controller.removeBookmark(mark) }) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Xoá dấu trang")
+            GlassGroup(Modifier.clickable {
+                controller.goTo(mark.position.chapter)
+                onNavigate()
+            }) {
+                Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(mark.label, color = p.text, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                    GlassIconButton(Icons.Rounded.DeleteOutline, null, onClick = { controller.removeBookmark(mark) }, size = 36.dp)
                 }
             }
-            HorizontalDivider(Modifier.padding(horizontal = 20.dp))
         }
     }
 }

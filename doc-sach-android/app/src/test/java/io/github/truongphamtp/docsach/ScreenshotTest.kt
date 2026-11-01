@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.ImageBitmap
@@ -31,6 +32,7 @@ import io.github.truongphamtp.docsach.reader.ReaderController
 import io.github.truongphamtp.docsach.reader.ReaderPanel
 import io.github.truongphamtp.docsach.reader.ReaderScreen
 import io.github.truongphamtp.docsach.ui.AppTheme
+import io.github.truongphamtp.docsach.ui.LocalGlassBlur
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
@@ -56,6 +58,12 @@ class ScreenshotTest {
     @Before
     fun onlyWhenRequested() {
         assumeTrue(System.getProperty("docsach.screenshots") == "true")
+    }
+
+    /** Robolectric vẽ bằng phần mềm nên tắt làm mờ thật; kính hiển thị ở dạng trong suốt thay thế. */
+    @Composable
+    private fun NoBlur(content: @Composable () -> Unit) {
+        CompositionLocalProvider(LocalGlassBlur provides false) { AppTheme(content = content) }
     }
 
     private fun save(name: String) {
@@ -106,7 +114,7 @@ class ScreenshotTest {
     ) {
         val scope = rememberCoroutineScope()
         val controller = remember { ReaderController(book, position, emptyList(), scope).also(onController) }
-        AppTheme {
+        NoBlur {
             ReaderScreen(
                 controller = controller,
                 settings = settings,
@@ -172,7 +180,7 @@ class ScreenshotTest {
 
     private fun shootLibrary(name: String) {
         compose.setContent {
-            AppTheme {
+            NoBlur {
                 LibraryScreen(
                     books = sampleBooks,
                     prefs = LibraryPrefs(),
@@ -228,7 +236,7 @@ class ScreenshotTest {
     private fun shootPdf(name: String, menu: Boolean) {
         compose.setContent {
             val controller = remember { PdfReaderController(FakePdf(), "Đề cương ôn tập Toán 12", 2, emptyList()) }
-            AppTheme {
+            NoBlur {
                 PdfReaderScreen(controller, ReaderSettings(), {}, {}, fold = null, initialMenuVisible = menu)
             }
         }

@@ -91,6 +91,8 @@ dependencies {
     implementation("androidx.window:window:1.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jsoup:jsoup:1.18.3")
+    // Hiệu ứng kính mờ (Liquid Glass) cho thanh công cụ và bảng nổi.
+    implementation("dev.chrisbanes.haze:haze:1.1.1")
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
 

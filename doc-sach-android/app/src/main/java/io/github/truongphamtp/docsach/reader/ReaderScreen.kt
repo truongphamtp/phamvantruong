@@ -28,18 +28,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.FormatSize
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +51,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -74,9 +77,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.truongphamtp.docsach.core.FoldInfo
 import io.github.truongphamtp.docsach.core.HardwareKey
+import io.github.truongphamtp.docsach.core.ReadingPosition
 import io.github.truongphamtp.docsach.core.ReaderSettings
 import io.github.truongphamtp.docsach.core.ToolbarSide
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
+import io.github.truongphamtp.docsach.ui.AccentTile
 import io.github.truongphamtp.docsach.ui.FloatingRail
+import io.github.truongphamtp.docsach.ui.GlassIconButton
+import io.github.truongphamtp.docsach.ui.HyperDialog
+import io.github.truongphamtp.docsach.ui.HyperSlider
+import io.github.truongphamtp.docsach.ui.LocalHazeState
+import io.github.truongphamtp.docsach.ui.LocalHyper
+import io.github.truongphamtp.docsach.ui.glass
 import io.github.truongphamtp.docsach.ui.LocalBackHandler
 import io.github.truongphamtp.docsach.ui.LocalReaderPlatform
 import io.github.truongphamtp.docsach.ui.PinnedRail
@@ -157,25 +170,27 @@ fun ReaderScreen(
     }
 
     val actions = listOf(
-        RailAction(Icons.AutoMirrored.Filled.ArrowBack, "Thư viện", onClick = onBack),
-        RailAction(Icons.AutoMirrored.Filled.MenuBook, "Mục lục", selected = panel == ReaderPanel.TOC) { openPanel(ReaderPanel.TOC) },
-        RailAction(Icons.Filled.Search, "Tìm", selected = panel == ReaderPanel.SEARCH) { openPanel(ReaderPanel.SEARCH) },
-        RailAction(Icons.Filled.FormatSize, "Hiển thị", selected = panel == ReaderPanel.DISPLAY) { openPanel(ReaderPanel.DISPLAY) },
+        RailAction(Icons.AutoMirrored.Rounded.ArrowBackIos, "Thư viện", onClick = onBack),
+        RailAction(Icons.AutoMirrored.Rounded.FormatListBulleted, "Mục lục", selected = panel == ReaderPanel.TOC) { openPanel(ReaderPanel.TOC) },
+        RailAction(Icons.Rounded.Search, "Tìm", selected = panel == ReaderPanel.SEARCH) { openPanel(ReaderPanel.SEARCH) },
+        RailAction(Icons.Rounded.TextFields, "Hiển thị", selected = panel == ReaderPanel.DISPLAY) { openPanel(ReaderPanel.DISPLAY) },
         RailAction(
-            if (controller.isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+            if (controller.isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
             "Dấu trang",
             selected = controller.isBookmarked,
         ) { controller.toggleBookmark() },
-        RailAction(Icons.Filled.RecordVoiceOver, "Đọc to", selected = controller.speaking) {
+        RailAction(Icons.Rounded.Headphones, "Đọc to", selected = controller.speaking) {
             if (controller.speaking) controller.stopSpeech() else controller.startSpeech()
         },
     )
 
+    val hazeState = remember { HazeState() }
     ReaderChromeTheme(colors) {
+        CompositionLocalProvider(LocalHazeState provides hazeState) {
         Box(modifier.fillMaxSize().background(colors.background)) {
             Row(Modifier.fillMaxSize()) {
                 if (settings.pinToolbar && !railOnRight) {
-                    PinnedRail(actions, containerColor = colors.chrome)
+                    PinnedRail(actions)
                 }
                 ReadingArea(
                     controller = controller,
@@ -186,10 +201,10 @@ fun ReaderScreen(
                     onFooterTap = { footerMode = footerMode.next() },
                     menuVisible = menuVisible,
                     onMenuVisibleChange = { menuVisible = it },
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    modifier = Modifier.weight(1f).fillMaxHeight().haze(hazeState),
                 )
                 if (settings.pinToolbar && railOnRight) {
-                    PinnedRail(actions, containerColor = colors.chrome)
+                    PinnedRail(actions)
                 }
             }
 
@@ -210,7 +225,7 @@ fun ReaderScreen(
                 ReaderBottomBar(controller, colors, railOnRight, reserveRail = false)
             }
             if (!settings.pinToolbar) {
-                Box(Modifier.fillMaxSize().padding(top = 72.dp, bottom = 118.dp)) {
+                Box(Modifier.fillMaxSize().padding(top = 96.dp, bottom = 128.dp)) {
                     AnimatedVisibility(
                         visible = menuVisible,
                         // Lệch xuống dưới một chút: vùng ngón cái khi cầm máy.
@@ -257,21 +272,19 @@ fun ReaderScreen(
             }
 
             controller.speechError?.let { message ->
-                AlertDialog(
+                HyperDialog(
                     onDismissRequest = { controller.speechError = null },
-                    title = { Text("Chưa đọc to được") },
-                    text = { Text(message) },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            controller.speechError = null
-                            platform.openSpeechSettings()
-                        }) { Text("Mở cài đặt giọng nói") }
+                    title = "Chưa đọc to được",
+                    message = message,
+                    confirmText = "Mở cài đặt",
+                    onConfirm = {
+                        controller.speechError = null
+                        platform.openSpeechSettings()
                     },
-                    dismissButton = {
-                        TextButton(onClick = { controller.speechError = null }) { Text("Đóng") }
-                    },
+                    dismissText = "Đóng",
                 )
             }
+        }
         }
     }
 }
@@ -425,15 +438,23 @@ private fun formatMinutes(minutes: Int, suffix: String): String = when {
 
 @Composable
 private fun ReaderTopBar(controller: ReaderController, colors: ReaderColors) {
-    Surface(color = colors.chrome, shadowElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-        Column(
-            Modifier
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(horizontal = 24.dp, vertical = 10.dp),
-        ) {
+    val p = LocalHyper.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .glass(RoundedCornerShape(26.dp), elevation = 10.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AccentTile(Icons.AutoMirrored.Rounded.MenuBook, size = 38.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
             Text(
                 controller.book.title,
-                style = MaterialTheme.typography.titleMedium,
+                color = p.text,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -441,8 +462,8 @@ private fun ReaderTopBar(controller: ReaderController, colors: ReaderColors) {
             val author = controller.book.author
             Text(
                 if (author.isBlank()) controller.book.chapterTitle(controller.chapter) else author,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.secondaryText,
+                color = p.textSecondary,
+                fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -452,79 +473,77 @@ private fun ReaderTopBar(controller: ReaderController, colors: ReaderColors) {
 
 @Composable
 private fun ReaderBottomBar(controller: ReaderController, colors: ReaderColors, railOnRight: Boolean, reserveRail: Boolean) {
+    val p = LocalHyper.current
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
     val value = if (dragging) dragValue else controller.progress
     val preview = if (dragging) controller.book.positionAt((dragValue * controller.book.totalLength).toInt()) else null
-    Surface(color = colors.chrome, shadowElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-        Column(
-            Modifier
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(
-                    start = if (!railOnRight && reserveRail) 96.dp else 24.dp,
-                    end = if (railOnRight && reserveRail) 96.dp else 24.dp,
-                    top = 10.dp,
-                    bottom = 6.dp,
-                ),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    controller.book.chapterTitle(preview?.chapter ?: controller.chapter),
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "${(value * 100).roundToInt()}% · vị trí ${(controller.book.globalOffset(preview ?: io.github.truongphamtp.docsach.core.ReadingPosition(controller.chapter, controller.anchor)) / ReaderController.LOCATION_CHARS) + 1}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.secondaryText,
-                )
-            }
-            Slider(
-                value = value,
-                onValueChange = {
-                    dragging = true
-                    dragValue = it
-                },
-                onValueChangeFinished = {
-                    controller.goToFraction(dragValue)
-                    dragging = false
-                },
+    val location = controller.book.globalOffset(preview ?: ReadingPosition(controller.chapter, controller.anchor)) /
+        ReaderController.LOCATION_CHARS + 1
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(
+                start = if (!railOnRight && reserveRail) 96.dp else 12.dp,
+                end = if (railOnRight && reserveRail) 96.dp else 12.dp,
+                top = 8.dp,
+                bottom = 10.dp,
             )
+            .glass(RoundedCornerShape(28.dp), elevation = 10.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                controller.book.chapterTitle(preview?.chapter ?: controller.chapter),
+                color = p.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text("${(value * 100).roundToInt()}% · vị trí $location", color = p.textSecondary, fontSize = 12.sp)
         }
+        HyperSlider(
+            value = value,
+            onValueChange = {
+                dragging = true
+                dragValue = it
+            },
+            onValueChangeFinished = {
+                if (dragging) controller.goToFraction(dragValue)
+                dragging = false
+            },
+            knob = true,
+        )
     }
 }
 
 @Composable
 private fun SpeechBar(controller: ReaderController, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 6.dp,
+    val p = LocalHyper.current
+    Row(
+        modifier
+            .glass(CircleShape, strong = true, elevation = 12.dp)
+            .padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier.padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(Icons.Filled.RecordVoiceOver, contentDescription = null, modifier = Modifier.size(20.dp))
-            Text(
-                if (controller.speechPaused) "Đã tạm dừng" else "Đang đọc to",
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(horizontal = 6.dp),
-            )
-            IconButton(onClick = { if (controller.speechPaused) controller.resumeSpeech() else controller.pauseSpeech() }) {
-                Icon(
-                    if (controller.speechPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                    contentDescription = if (controller.speechPaused) "Đọc tiếp" else "Tạm dừng",
-                )
-            }
-            IconButton(onClick = { controller.stopSpeech() }) {
-                Icon(Icons.Filled.Stop, contentDescription = "Dừng đọc")
-            }
-        }
+        AccentTile(Icons.Rounded.Headphones, size = 34.dp)
+        Text(
+            if (controller.speechPaused) "Đã tạm dừng" else "Đang đọc to",
+            color = p.text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 10.dp),
+        )
+        GlassIconButton(
+            if (controller.speechPaused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+            null,
+            onClick = { if (controller.speechPaused) controller.resumeSpeech() else controller.pauseSpeech() },
+            size = 38.dp,
+        )
+        GlassIconButton(Icons.Rounded.Stop, null, onClick = { controller.stopSpeech() }, size = 38.dp)
     }
 }
