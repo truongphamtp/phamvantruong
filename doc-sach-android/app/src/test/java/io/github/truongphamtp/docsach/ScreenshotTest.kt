@@ -2,13 +2,12 @@ package io.github.truongphamtp.docsach
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import io.github.truongphamtp.docsach.core.BookFormat
 import io.github.truongphamtp.docsach.core.BookRecord
 import io.github.truongphamtp.docsach.core.LibraryPrefs
@@ -44,7 +43,7 @@ import java.io.File
 @Config(sdk = [34], application = Application::class)
 class ScreenshotTest {
     @get:Rule
-    val compose = createComposeRule()
+    val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Before
     fun onlyWhenRequested() {
@@ -53,9 +52,16 @@ class ScreenshotTest {
 
     private fun save(name: String) {
         compose.waitForIdle()
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+        // Vẽ cả cửa sổ ra ảnh (không dùng PixelCopy vì Robolectric không hỗ trợ ổn định).
+        val view = compose.activity.window.decorView
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(bitmap))
         val dir = File("build/screenshots").apply { mkdirs() }
         File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        // Bản thu nhỏ để xem nhanh trong nhật ký CI.
+        val small = Bitmap.createScaledBitmap(bitmap, bitmap.width * 45 / 100, bitmap.height * 45 / 100, true)
+        val smallDir = File("build/screenshots-small").apply { mkdirs() }
+        File(smallDir, "$name.jpg").outputStream().use { small.compress(Bitmap.CompressFormat.JPEG, 72, it) }
     }
 
     private fun guide(): BookContent =

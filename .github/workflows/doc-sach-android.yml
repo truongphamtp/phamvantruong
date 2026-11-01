@@ -58,6 +58,17 @@ jobs:
           path: doc-sach-android/app/build/screenshots/
           if-no-files-found: ignore
 
+      - name: In ảnh thu nhỏ vào nhật ký (để xem lại nhanh)
+        if: always()
+        continue-on-error: true
+        run: |
+          shopt -s nullglob
+          for f in app/build/screenshots-small/*.jpg; do
+            echo "=====ANH-BAT-DAU $(basename "$f")"
+            base64 "$f"
+            echo "=====ANH-KET-THUC"
+          done
+
       - name: Cập nhật bản tải về "doc-sach-moi-nhat"
         if: github.event_name != 'pull_request'
         continue-on-error: true
