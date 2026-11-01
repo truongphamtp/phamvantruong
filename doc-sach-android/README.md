@@ -59,9 +59,18 @@ Yêu cầu Android 8.0 trở lên.
 
 1. Mở <https://entra.microsoft.com> (hoặc <https://portal.azure.com>) và đăng nhập bằng tài khoản Microsoft dùng
    OneDrive.
-   - Từ giữa năm 2024, Microsoft buộc mọi ứng dụng phải nằm trong một **thư mục (directory/tenant)**. Nếu trang
-     báo tài khoản chưa có thư mục, cách nhanh nhất là đăng ký Azure miễn phí tại <https://azure.microsoft.com/free>
-     (có thể phải xác minh điện thoại/thẻ; đăng ký ứng dụng không mất phí), rồi quay lại bước này.
+   - Gặp thông báo *"Tài khoản người dùng được chọn không tồn tại trong đối tượng thuê 'Microsoft Services'…"*
+     (mã lỗi AADSTS50020)? Nghĩa là tài khoản Microsoft cá nhân chưa có **thư mục (tenant)** — từ giữa năm 2024
+     Microsoft buộc mọi ứng dụng phải được đăng ký trong một thư mục. Chọn một trong các cách:
+     - **Tài khoản Microsoft 365 của trường/cơ quan** (ví dụ `…@….edu.vn`): mở cửa sổ ẩn danh, đăng nhập
+       <https://entra.microsoft.com> bằng tài khoản đó rồi làm tiếp bước 2 (vẫn chọn loại tài khoản có
+       *personal Microsoft accounts* để sau này đăng nhập OneDrive cá nhân). Nếu bị báo không có quyền đăng ký
+       ứng dụng, nhờ quản trị viên của trường hoặc dùng cách dưới.
+     - **Đăng ký Azure miễn phí** bằng chính tài khoản cá nhân tại <https://azure.microsoft.com/free> (cần số điện
+       thoại và thẻ Visa/Mastercard để xác minh; đăng ký ứng dụng không mất phí). Microsoft tự tạo thư mục; sau đó
+       vào <https://portal.azure.com>, gõ tìm **App registrations**.
+     - **Nhờ người có tài khoản Azure** tạo giúp rồi gửi mã ứng dụng cho bạn. Mã này không phải mật khẩu; dữ liệu
+       vẫn nằm trong OneDrive của bạn và người tạo không xem được.
 2. **App registrations** (Đăng ký ứng dụng) → **New registration**:
    - **Name**: `Đọc Sách` — đây cũng là tên thư mục trong OneDrive (`Ứng dụng › Đọc Sách`).
    - **Supported account types**: *Accounts in any organizational directory and personal Microsoft accounts*.
