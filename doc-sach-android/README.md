@@ -1,7 +1,8 @@
 # Đọc Sách — ứng dụng đọc sách cho Android
 
-Ứng dụng đọc sách điện tử chạy hoàn toàn trên máy (không cần mạng), giao diện theo phong cách máy đọc sách
-Kindle, tối ưu cho màn hình gập **Xiaomi Mix Fold 2**, thanh công cụ nằm **bên phải** cho tay phải dễ thao tác.
+Ứng dụng đọc sách điện tử chạy hoàn toàn trên máy (không cần mạng). Trang đọc theo phong cách máy đọc sách
+Kindle; giao diện theo phong cách **"Liquid Glass" của HyperOS 4** (kính mờ, viền sáng, bo góc lớn, nền xanh
+loang); tối ưu cho màn hình gập **Xiaomi Mix Fold 2**; thanh công cụ nằm **bên phải** cho tay phải dễ thao tác.
 
 ## Tính năng
 
@@ -14,6 +15,8 @@ Kindle, tối ưu cho màn hình gập **Xiaomi Mix Fold 2**, thanh công cụ n
   gập/mở giữa chừng vẫn giữ đúng chỗ đang đọc.
 - **Thanh công cụ dọc bên phải** (có thể chuyển sang trái): Thư viện, Mục lục, Tìm, Hiển thị, Dấu trang, Đọc to.
 - Lật trang bằng chạm, vuốt hoặc **phím âm lượng**; hiệu ứng trượt có thể tắt.
+- Giao diện kính mờ kiểu HyperOS 4: thanh công cụ, bảng cài đặt, hộp thoại đều là "tấm kính" nổi làm mờ nội dung
+  phía sau (Android 12 trở lên), công tắc/thanh trượt/nút chọn kiểu HyperOS, chế độ sáng và tối theo hệ thống.
 - Tuỳ chỉnh: 4 màu nền (Trắng, Giấy ngà, Xanh dịu, Đen), cỡ chữ, phông có chân/không chân, giãn dòng, lề,
   căn đều, độ sáng riêng khi đọc.
 - Thư viện có ảnh bìa (tự tạo bìa nếu sách không có), "Đọc tiếp", sắp xếp, tìm theo tên/tác giả.
@@ -59,7 +62,7 @@ Google Play, hãy tạo khoá riêng và giữ bí mật.
 | `format/` | Đọc EPUB (kể cả CSS kiểu Kindle), TXT, dàn trang, tìm kiếm không dấu, tách câu |
 | `reader/` | Màn hình đọc EPUB/TXT và PDF, mục lục, tìm kiếm, cài đặt hiển thị |
 | `library/` | Màn hình thư viện |
-| `ui/` | Màu sắc, thanh công cụ bên phải, bảng trượt, cử chỉ lật trang |
+| `ui/` | Phong cách HyperOS 4 (kính mờ, công tắc, thanh trượt...), thanh công cụ bên phải, bảng trượt, cử chỉ lật trang |
 | `data/` | Lưu thư viện, cài đặt, nhập sách |
 | `platform/` | Phần riêng của Android: PDF, giọng đọc, ảnh, bản lề màn hình gập |
 
