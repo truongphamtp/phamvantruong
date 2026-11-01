@@ -3,11 +3,16 @@ package io.github.truongphamtp.docsach
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.unit.IntSize
 import io.github.truongphamtp.docsach.core.BookFormat
 import io.github.truongphamtp.docsach.core.BookRecord
 import io.github.truongphamtp.docsach.core.LibraryPrefs
@@ -19,6 +24,9 @@ import io.github.truongphamtp.docsach.format.EpubArchive
 import io.github.truongphamtp.docsach.format.EpubParser
 import io.github.truongphamtp.docsach.format.TxtParser
 import io.github.truongphamtp.docsach.library.LibraryScreen
+import io.github.truongphamtp.docsach.reader.PdfPageSource
+import io.github.truongphamtp.docsach.reader.PdfReaderController
+import io.github.truongphamtp.docsach.reader.PdfReaderScreen
 import io.github.truongphamtp.docsach.reader.ReaderController
 import io.github.truongphamtp.docsach.reader.ReaderPanel
 import io.github.truongphamtp.docsach.reader.ReaderScreen
@@ -190,4 +198,50 @@ class ScreenshotTest {
     @Test
     @Config(qualifiers = "w393dp-h916dp-440dpi")
     fun libraryFolded() = shootLibrary("8-thu-vien-gap-may")
+
+    /** PDF giả lập khổ A4 để chụp giao diện đọc PDF. */
+    private class FakePdf : PdfPageSource {
+        override val pageCount = 12
+        override suspend fun pageSize(index: Int) = IntSize(595, 842)
+        override suspend fun render(index: Int, widthPx: Int): ImageBitmap {
+            val height = widthPx * 842 / 595
+            val bitmap = Bitmap.createBitmap(widthPx, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.WHITE)
+            val paint = Paint().apply { isAntiAlias = true; color = Color.rgb(30, 30, 30); textSize = widthPx / 16f }
+            canvas.drawText("ĐỀ CƯƠNG ÔN TẬP", widthPx * 0.1f, widthPx * 0.16f, paint)
+            paint.textSize = widthPx / 30f
+            canvas.drawText("Trang ${index + 1}", widthPx * 0.1f, widthPx * 0.24f, paint)
+            paint.color = Color.rgb(170, 170, 170)
+            var y = widthPx * 0.32f
+            var line = 0
+            while (y < height - widthPx * 0.12f) {
+                val end = if (line % 6 == 5) 0.55f else 0.9f
+                canvas.drawRect(widthPx * 0.1f, y, widthPx * end, y + widthPx * 0.012f, paint)
+                y += widthPx * 0.045f
+                line++
+            }
+            return bitmap.asImageBitmap()
+        }
+    }
+
+    private fun shootPdf(name: String, menu: Boolean) {
+        compose.setContent {
+            val controller = remember { PdfReaderController(FakePdf(), "Đề cương ôn tập Toán 12", 2, emptyList()) }
+            AppTheme {
+                PdfReaderScreen(controller, ReaderSettings(), {}, {}, fold = null, initialMenuVisible = menu)
+            }
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        save(name)
+    }
+
+    @Test
+    @Config(qualifiers = "w766dp-h864dp-400dpi")
+    fun pdfUnfolded() = shootPdf("9-pdf-mo-may", menu = false)
+
+    @Test
+    @Config(qualifiers = "w393dp-h916dp-440dpi")
+    fun pdfFoldedMenu() = shootPdf("10-pdf-gap-may", menu = true)
 }
