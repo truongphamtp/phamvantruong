@@ -105,6 +105,11 @@ class ComposePageStyle(
     override fun measure(block: TextBlock, width: Int): LayoutText {
         var style = styleFor(block.kind)
         if (block.indent) style = style.copy(textIndent = TextIndent(firstLine = (size * 1.6f).sp))
+        if (block.kind == BlockKind.LIST_ITEM) {
+            // Thụt treo: các dòng sau thẳng hàng với chữ, không thẳng với dấu đầu dòng.
+            val marker = LIST_MARKER.find(block.text)?.value
+            if (marker != null) style = style.copy(textIndent = TextIndent(restLine = (size * markerWidthEm(marker)).sp))
+        }
         val result = measurer.measure(
             text = block.annotated(),
             style = style,
@@ -147,6 +152,12 @@ class ComposePageStyle(
         return PieceSize(w * scale, h * scale)
     }
 }
+
+private val LIST_MARKER = Regex("^(•|[0-9]{1,3}\\.) ")
+
+/** Bề rộng ước lượng (theo em) của dấu đầu dòng "• " hoặc "12. ". */
+private fun markerWidthEm(marker: String): Float =
+    if (marker.startsWith("•")) 0.8f else 0.56f * (marker.length - 2) + 0.75f
 
 internal fun TextBlock.annotated(): AnnotatedString {
     if (styles.isEmpty()) return AnnotatedString(text)

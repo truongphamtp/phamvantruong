@@ -65,7 +65,7 @@ jobs:
           shopt -s nullglob
           for f in app/build/screenshots-small/*.jpg; do
             echo "=====ANH-BAT-DAU $(basename "$f")"
-            base64 "$f"
+            base64 -w 30000 "$f"
             echo "=====ANH-KET-THUC"
           done
 

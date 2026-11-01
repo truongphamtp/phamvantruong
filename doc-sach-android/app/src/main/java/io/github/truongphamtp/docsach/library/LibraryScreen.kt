@@ -389,7 +389,12 @@ private fun ContinueCard(book: BookRecord, coverLoader: CoverLoader?, wide: Bool
                     Text(book.author, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.height(8.dp))
-                LinearProgressIndicator(progress = { book.progress }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(
+                    progress = { book.progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Đã đọc ${(book.progress * 100).roundToInt()}%",
@@ -431,6 +436,8 @@ private fun BookTile(book: BookRecord, coverLoader: CoverLoader?, onClick: () ->
             LinearProgressIndicator(
                 progress = { book.progress },
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp).height(3.dp),
+                gapSize = 0.dp,
+                drawStopIndicator = {},
             )
         }
         Spacer(Modifier.height(6.dp))
