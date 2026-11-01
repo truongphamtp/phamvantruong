@@ -248,17 +248,16 @@ private fun PeersSection(lan: LanUiState, actions: LanActions, now: Long) {
             }
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        PillButton("Ghép đôi máy mới", onClick = actions.onStartPairing, icon = Icons.Rounded.Devices, modifier = Modifier.weight(1f))
-        if (lan.peers.isNotEmpty()) {
-            PillButton(
-                if (lan.syncing) "Đang đồng bộ…" else "Đồng bộ ngay",
-                onClick = { if (!lan.syncing) actions.onSyncNow() },
-                primary = false,
-                icon = Icons.Rounded.Sync,
-                modifier = Modifier.weight(1f),
-            )
-        }
+    // Hai nút xếp dọc để chữ không bị cắt trên màn hình hẹp (máy gập).
+    PillButton("Ghép đôi máy mới", onClick = actions.onStartPairing, icon = Icons.Rounded.Devices, modifier = Modifier.fillMaxWidth())
+    if (lan.peers.isNotEmpty()) {
+        PillButton(
+            if (lan.syncing) "Đang đồng bộ…" else "Đồng bộ ngay",
+            onClick = { if (!lan.syncing) actions.onSyncNow() },
+            primary = false,
+            icon = Icons.Rounded.Sync,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
     unpairing?.let { peer ->
         HyperDialog(
@@ -345,6 +344,10 @@ private fun PairingSection(lan: LanUiState, actions: LanActions) {
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center,
             )
+            lan.address?.let { address ->
+                Spacer(Modifier.size(6.dp))
+                Text("Địa chỉ máy này: $address", color = p.textSecondary, fontSize = 12.sp, textAlign = TextAlign.Center)
+            }
         }
     }
     SectionLabel("Hoặc nhập mã của máy kia vào đây", Modifier.padding(top = 2.dp))
