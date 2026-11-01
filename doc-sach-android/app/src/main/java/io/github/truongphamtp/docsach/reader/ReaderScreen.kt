@@ -207,7 +207,7 @@ fun ReaderScreen(
                 enter = fadeIn() + slideInVertically { it },
                 exit = fadeOut() + slideOutVertically { it },
             ) {
-                ReaderBottomBar(controller, colors, railOnRight, reserveRail = !settings.pinToolbar)
+                ReaderBottomBar(controller, colors, railOnRight, reserveRail = false)
             }
             if (!settings.pinToolbar) {
                 Box(Modifier.fillMaxSize().padding(top = 72.dp, bottom = 118.dp)) {

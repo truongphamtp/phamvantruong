@@ -402,7 +402,7 @@ fun PdfReaderScreen(
                 enter = fadeIn() + slideInVertically { it },
                 exit = fadeOut() + slideOutVertically { it },
             ) {
-                PdfBottomBar(controller, colors.chrome, railOnRight, reserveRail = !settings.pinToolbar)
+                PdfBottomBar(controller, colors.chrome, railOnRight, reserveRail = false)
             }
             if (!settings.pinToolbar) {
                 Box(Modifier.fillMaxSize().padding(top = 72.dp, bottom = 118.dp)) {

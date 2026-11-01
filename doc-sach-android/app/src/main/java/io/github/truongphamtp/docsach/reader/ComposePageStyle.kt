@@ -113,7 +113,8 @@ class ComposePageStyle(
         val result = measurer.measure(
             text = block.annotated(),
             style = style,
-            constraints = Constraints(maxWidth = width.coerceAtLeast(1)),
+            // Bề rộng cố định để căn giữa/căn phải đúng cả với dòng ngắn (tiêu đề).
+            constraints = Constraints.fixedWidth(width.coerceAtLeast(1)),
             density = density,
             skipCache = true,
         )
