@@ -127,6 +127,8 @@ class AndroidSpeechEngine(context: Context) : SpeechEngine {
         if (status != TextToSpeech.SUCCESS) {
             failure = NO_ENGINE
         } else {
+            // Phát như nội dung media: chỉnh bằng âm lượng media, hiện như trình phát (cả trên "đảo" HyperOS).
+            engine.setAudioAttributes(ReadAloudService.SPEECH_ATTRIBUTES)
             val result = engine.setLanguage(Locale.forLanguageTag("vi-VN"))
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 failure = NO_VIETNAMESE

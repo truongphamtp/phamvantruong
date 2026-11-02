@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
 import io.github.truongphamtp.docsach.platform.AndroidReaderPlatform
+import io.github.truongphamtp.docsach.platform.ReadAloudCenter
 import io.github.truongphamtp.docsach.platform.hardwareKeyFor
 import io.github.truongphamtp.docsach.platform.toFoldInfo
 import io.github.truongphamtp.docsach.ui.AppTheme
@@ -58,6 +59,11 @@ class MainActivity : ComponentActivity() {
 
     /** Mở sách được chia sẻ/mở từ ứng dụng khác (Quản lý tệp, Zalo, Google Drive...). */
     private fun handleIntent(intent: Intent?) {
+        // Chạm vào thông báo đọc to / "đảo" camera: mở lại đúng cuốn đang đọc.
+        if (intent?.action == ReadAloudCenter.ACTION_OPEN_BOOK) {
+            intent.getStringExtra(ReadAloudCenter.EXTRA_BOOK_ID)?.let { openRequests.value = it }
+            return
+        }
         if (intent?.action != Intent.ACTION_VIEW) return
         val uri = intent.data ?: return
         (application as DocSachApp).importer.importAndOpen(uri) { id -> openRequests.value = id }

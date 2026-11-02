@@ -1,5 +1,8 @@
 package io.github.truongphamtp.docsach
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -22,6 +25,19 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -39,7 +55,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,7 +68,6 @@ import io.github.truongphamtp.docsach.core.BookRecord
 import io.github.truongphamtp.docsach.core.FoldInfo
 import io.github.truongphamtp.docsach.core.Note
 import io.github.truongphamtp.docsach.core.PositionOffer
-import io.github.truongphamtp.docsach.core.ReadingPosition
 import io.github.truongphamtp.docsach.format.BookContent
 import io.github.truongphamtp.docsach.format.EpubArchive
 import io.github.truongphamtp.docsach.format.EpubParser
@@ -64,17 +78,21 @@ import io.github.truongphamtp.docsach.library.NotesScreen
 import io.github.truongphamtp.docsach.library.SyncActions
 import io.github.truongphamtp.docsach.library.SyncOfferBanner
 import io.github.truongphamtp.docsach.platform.AndroidPdfSource
-import io.github.truongphamtp.docsach.platform.AndroidSpeechEngine
+import io.github.truongphamtp.docsach.core.ToolbarSide
+import io.github.truongphamtp.docsach.platform.ReadAloudUi
+import io.github.truongphamtp.docsach.platform.ReadingSession
 import io.github.truongphamtp.docsach.platform.EpubImageProvider
 import io.github.truongphamtp.docsach.reader.BookImageProvider
 import io.github.truongphamtp.docsach.reader.PdfReaderController
 import io.github.truongphamtp.docsach.reader.PdfReaderScreen
-import io.github.truongphamtp.docsach.reader.ReaderController
 import io.github.truongphamtp.docsach.reader.ReaderScreen
 import io.github.truongphamtp.docsach.sync.MicrosoftSignInScreen
 import io.github.truongphamtp.docsach.ui.LiquidBackground
 import io.github.truongphamtp.docsach.ui.LocalHyper
+import io.github.truongphamtp.docsach.ui.GlassIconButton
+import io.github.truongphamtp.docsach.ui.Motion
 import io.github.truongphamtp.docsach.ui.PillButton
+import io.github.truongphamtp.docsach.ui.pressable
 import io.github.truongphamtp.docsach.ui.glass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
@@ -218,25 +236,87 @@ private fun LibraryRoute(app: DocSachApp, onOpenNotes: () -> Unit, onOpen: (Book
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         app.importer.importAll(uris)
     }
-    LibraryScreen(
-        books = books,
-        prefs = prefs,
-        onPrefsChange = app.settings::updateLibrary,
-        coverLoader = app.covers,
-        busy = busy,
-        message = message,
-        onMessageShown = app.importer::clearMessage,
-        onOpen = onOpen,
-        onAddBooks = { picker.launch(arrayOf("*/*")) },
-        onDelete = { app.importer.delete(it) },
-        toolbarSide = readerSettings.toolbarSide,
-        onOpenNotes = onOpenNotes,
-        sync = sync,
-        syncActions = syncActions,
-        lan = lan,
-        lanActions = lanActions,
-    )
+    val reading by app.readAloud.state.collectAsState()
+    Box(Modifier.fillMaxSize()) {
+        LibraryScreen(
+            books = books,
+            prefs = prefs,
+            onPrefsChange = app.settings::updateLibrary,
+            coverLoader = app.covers,
+            busy = busy,
+            message = message,
+            onMessageShown = app.importer::clearMessage,
+            onOpen = onOpen,
+            onAddBooks = { picker.launch(arrayOf("*/*")) },
+            onDelete = { app.importer.delete(it) },
+            toolbarSide = readerSettings.toolbarSide,
+            onOpenNotes = onOpenNotes,
+            sync = sync,
+            syncActions = syncActions,
+            lan = lan,
+            lanActions = lanActions,
+        )
+        ReadAloudBar(
+            ui = reading,
+            railOnRight = readerSettings.toolbarSide == ToolbarSide.RIGHT,
+            onOpen = { id -> app.library.get(id)?.let(onOpen) },
+            onToggle = app.readAloud::toggle,
+            onStop = app.readAloud::stop,
+        )
+    }
 }
+
+/** Thanh nhỏ ở thư viện khi đang đọc to chạy nền: chạm để mở lại sách, tạm dừng hoặc dừng. */
+@Composable
+private fun BoxScope.ReadAloudBar(
+    ui: ReadAloudUi?,
+    railOnRight: Boolean,
+    onOpen: (String) -> Unit,
+    onToggle: () -> Unit,
+    onStop: () -> Unit,
+) {
+    val p = LocalHyper.current
+    val shown = remember { mutableStateOf(ui) }
+    if (ui != null) shown.value = ui
+    AnimatedVisibility(
+        visible = ui != null,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+            .padding(start = if (railOnRight) 16.dp else 112.dp, end = if (railOnRight) 112.dp else 16.dp, bottom = 16.dp),
+        enter = Motion.enterFromBottom(),
+        exit = Motion.exitToBottom(),
+    ) {
+        val current = shown.value ?: return@AnimatedVisibility
+        Row(
+            Modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
+                .pressable(pressedScale = 0.98f) { onOpen(current.bookId) }
+                .glass(CircleShape, strong = true, elevation = 12.dp)
+                .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.Headphones, contentDescription = null, tint = p.accent)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(current.title, color = p.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    if (current.paused) "Tạm dừng · ${current.chapter}" else current.sentence ?: current.chapter,
+                    color = p.textSecondary,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            GlassIconButton(if (current.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, null, onToggle, size = 42.dp)
+            GlassIconButton(Icons.Rounded.Close, null, onStop, size = 42.dp)
+        }
+    }
+}
+
+/** Chỉ hỏi quyền thông báo một lần mỗi lần mở ứng dụng. */
+private var askedNotificationPermission = false
 
 private sealed interface Session {
     class Text(val content: BookContent, val archive: EpubArchive?, val images: BookImageProvider?) : Session
@@ -286,10 +366,19 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, jumpNoteId: String?, fo
         return
     }
     val settings by app.settings.reader.collectAsState()
-    val session by produceState<Session?>(null, bookId) {
-        val opened = withContext(Dispatchers.IO) { openSession(app, record) }
+    // EPUB/TXT mở thành "phiên đọc" sống tách khỏi màn hình: rời màn hình mà đang đọc to thì vẫn đọc tiếp.
+    val session by produceState<Any?>(null, bookId) {
+        val opened: Any = app.readAloud.acquire(bookId)
+            ?: withContext(Dispatchers.IO) { openSession(app, record) }.let { result ->
+                if (result is Session.Text) app.readAloud.create(record, result.content, result.archive, result.images) else result
+            }
         value = opened
-        awaitDispose { closeSession(opened) }
+        awaitDispose {
+            when (opened) {
+                is ReadingSession -> app.readAloud.release(opened)
+                is Session -> closeSession(opened)
+            }
+        }
     }
     LaunchedEffect(bookId) { app.library.markOpened(bookId) }
     // Báo cho phần đồng bộ: sách đang mở (không ghi đè ghi chú đang sửa) và đồng bộ ngay khi đóng.
@@ -312,35 +401,21 @@ private fun ReaderRoute(app: DocSachApp, bookId: String, jumpNoteId: String?, fo
     when (val s = session) {
         null -> CenterMessage(record.title, loading = true)
         is Session.Failed -> CenterMessage(s.message, loading = false, onClose = onClose)
-        is Session.Text -> {
-            val scope = rememberCoroutineScope()
-            val controller = remember(s) {
-                // Mở lần đầu: nhảy tới điểm "bắt đầu đọc" do file khai báo, giống Kindle.
-                val firstOpen = record.lastOpenedAt == 0L && record.position == ReadingPosition()
-                val start = if (firstOpen) s.content.startPosition ?: record.position else record.position
-                ReaderController(
-                    book = s.content,
-                    initialPosition = start,
-                    initialBookmarks = record.bookmarks,
-                    scope = scope,
-                    images = s.images,
-                    onPositionChanged = { position, progress -> app.library.updatePosition(bookId, position, progress) },
-                    onBookmarksChanged = { app.library.updateBookmarks(bookId, it) },
-                    initialNotes = record.notes,
-                    onNotesChanged = { app.library.updateNotes(bookId, it) },
-                )
-            }
+        is ReadingSession -> {
+            val controller = s.controller
             // Mở từ sổ ghi chú: nhảy tới đúng đoạn có ghi chú và tô sáng.
             LaunchedEffect(controller, jumpNoteId) {
                 record.notes.firstOrNull { it.id == jumpNoteId }?.let { controller.goToNote(it) }
             }
+            // Lần đầu đọc to: xin quyền hiện thông báo (để có nút điều khiển và "đảo" HyperOS khi chạy nền).
             val context = LocalContext.current
-            DisposableEffect(controller) {
-                val engine = AndroidSpeechEngine(context)
-                controller.attachSpeech(engine)
-                onDispose {
-                    controller.stopSpeech()
-                    engine.release()
+            val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+            LaunchedEffect(controller.speaking) {
+                if (controller.speaking && Build.VERSION.SDK_INT >= 33 && !askedNotificationPermission &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    askedNotificationPermission = true
+                    permission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
             Box(Modifier.fillMaxSize()) {

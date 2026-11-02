@@ -148,6 +148,22 @@ class ReaderController(
 
     private var engine: SpeechEngine? = null
     private val speechSpans = HashMap<String, TextHighlight>()
+
+    /** Các câu đã xếp hàng để đọc (theo thứ tự), dùng cho "câu trước/câu sau". */
+    private val speechQueue = ArrayList<Pair<String, TextHighlight>>()
+    private val speechTexts = HashMap<String, String>()
+    private var speechCurrentId: String? = null
+
+    /** Câu đang được đọc (để hiện trên thông báo, màn hình khoá). */
+    var speechSentence by mutableStateOf<String?>(null)
+        private set
+
+    /** Gọi mỗi khi trạng thái đọc to đổi: bắt đầu, tạm dừng, tiếp tục, dừng, sang câu mới. */
+    var onSpeechChanged: (() -> Unit)? = null
+
+    /** Tên chương đang đọc to (hoặc đang xem). */
+    val speechChapterTitle: String
+        get() = book.chapters.getOrNull(speechHighlight?.chapter ?: chapter)?.title.orEmpty()
     private var speechLastId: String? = null
     private var speechChapter = 0
     private var speechSerial = 0
@@ -479,7 +495,10 @@ class ReaderController(
             override fun onStart(id: String) {
                 val span = speechSpans[id] ?: return
                 speechHighlight = span
+                speechCurrentId = id
+                speechSentence = speechTexts[id]
                 followSpeech(span)
+                onSpeechChanged?.invoke()
             }
 
             override fun onDone(id: String) {
@@ -506,12 +525,14 @@ class ReaderController(
         speechPaused = false
         val from = visibleRange()?.first ?: anchor
         queueSpeech(chapter, from, flush = true)
+        onSpeechChanged?.invoke()
     }
 
     fun pauseSpeech() {
         if (!speaking) return
         speechPaused = true
         engine?.stop()
+        onSpeechChanged?.invoke()
     }
 
     fun resumeSpeech() {
@@ -519,19 +540,61 @@ class ReaderController(
         speechPaused = false
         val last = speechHighlight
         if (last != null) queueSpeech(last.chapter, last.start, flush = true) else startSpeech()
+        onSpeechChanged?.invoke()
     }
 
     fun stopSpeech() {
+        val wasSpeaking = speaking
         speaking = false
         speechPaused = false
         speechHighlight = null
+        speechSentence = null
+        speechCurrentId = null
         speechSpans.clear()
+        speechQueue.clear()
+        speechTexts.clear()
         engine?.stop()
+        if (wasSpeaking) onSpeechChanged?.invoke()
+    }
+
+    /** Khi đang đọc to: sang câu sau (1) hoặc quay lại câu trước (-1); qua được ranh giới chương. */
+    fun skipSpeech(direction: Int) {
+        if (!speaking) return
+        val current = speechHighlight ?: speechQueue.firstOrNull()?.second ?: return
+        val starts = sentenceStarts(current.chapter)
+        val target: Pair<Int, Int>? = if (direction > 0) {
+            starts.firstOrNull { it > current.start }?.let { current.chapter to it }
+                ?: (current.chapter + 1).takeIf { it < chapterCount }?.let { it to 0 }
+        } else {
+            starts.lastOrNull { it < current.start }?.let { current.chapter to it }
+                ?: (current.chapter - 1).takeIf { it >= 0 }?.let { previous -> previous to (sentenceStarts(previous).lastOrNull() ?: 0) }
+                ?: (current.chapter to current.start)
+        }
+        if (target == null) {
+            // Câu cuối của sách: "câu sau" là hết.
+            stopSpeech()
+            return
+        }
+        speechPaused = false
+        queueSpeech(target.first, target.second, flush = true)
+        onSpeechChanged?.invoke()
+    }
+
+    /** Vị trí bắt đầu của từng câu trong chương [index]. */
+    private fun sentenceStarts(index: Int): List<Int> {
+        val out = ArrayList<Int>()
+        for (block in book.chapters[index].blocks) {
+            if (block !is TextBlock) continue
+            for (range in SpeechText.sentences(block.text, 0)) out += block.start + range.first
+        }
+        return out
     }
 
     private fun queueSpeech(fromChapter: Int, fromOffset: Int, flush: Boolean) {
         val speech = engine ?: return
         speechSpans.clear()
+        speechQueue.clear()
+        speechTexts.clear()
         var c = fromChapter
         var offset = fromOffset
         while (c < chapterCount) {
@@ -555,8 +618,12 @@ class ReaderController(
             val local = (from - block.start).coerceAtLeast(0)
             for (range in SpeechText.sentences(block.text, local)) {
                 val id = "s${speechSerial++}"
-                speechSpans[id] = TextHighlight(index, block.start + range.first, block.start + range.last + 1)
-                items += SpeechItem(id, block.text.substring(range.first, range.last + 1))
+                val span = TextHighlight(index, block.start + range.first, block.start + range.last + 1)
+                val text = block.text.substring(range.first, range.last + 1)
+                speechSpans[id] = span
+                speechQueue += id to span
+                speechTexts[id] = text
+                items += SpeechItem(id, text)
             }
         }
         return items

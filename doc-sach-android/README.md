@@ -32,7 +32,9 @@ của HyperOS 4** (kính mờ, viền sáng, bo góc lớn, nền xanh loang); t
 - **Ghi chú và đánh dấu** kiểu Kindle: nhấn giữ một chữ rồi kéo để chọn đoạn → chọn màu tô (vàng, xanh lá, xanh
   dương, hồng), viết ghi chú, sao chép; chạm vào đoạn đã tô để sửa/xoá. **Sổ ghi chú** (nút "Ghi chú" ở thư viện)
   gom ghi chú của mọi cuốn sách — bấm vào ghi chú là mở đúng đoạn đó. PDF: nhấn giữ trên trang để ghi chú cả trang.
-- **Đọc to** bằng giọng tiếng Việt của Android, tô sáng câu đang đọc, tự lật trang.
+- **Đọc to** bằng giọng tiếng Việt của Android, tô sáng câu đang đọc, tự lật trang. **Chạy nền** khi ra ngoài
+  ứng dụng hay về thư viện: thông báo kiểu trình phát nhạc (bìa sách, tạm dừng, câu trước/sau, dừng), điều khiển
+  được bằng tai nghe; trên HyperOS 3 hiện ở "đảo" quanh cụm camera (Hyper Island).
 - Tự nhớ trang đang đọc; mở tệp trực tiếp từ Quản lý tệp, Zalo, Google Drive...
 - Có sẵn cuốn "Hướng dẫn sử dụng" trong thư viện khi mở lần đầu.
 
@@ -129,6 +131,21 @@ Secrets and variables → Actions → Variables*; các bản APK đóng gói sau
 - **Không đồng bộ** cài đặt hiển thị (cỡ chữ, màu nền…) để mỗi máy hợp với màn hình của nó.
 - Trên OneDrive: `thu-vien.json` (danh sách, vị trí, ghi chú) và thư mục `sach/` (tệp sách). OneDrive miễn phí có 5 GB.
 - Mã đăng nhập (token) được mã hoá bằng khoá Android Keystore, không rời khỏi máy; ứng dụng không bao giờ thấy mật khẩu.
+
+## Đọc to chạy nền và "đảo" HyperOS
+
+Bấm **Đọc to** trong sách rồi cứ ra ngoài ứng dụng (hoặc về thư viện): giọng đọc vẫn tiếp tục, có thông báo để tạm
+dừng, sang câu trước/sau hoặc dừng; chạm vào thông báo là mở lại đúng chỗ đang đọc. Ở thư viện có thanh nhỏ
+"đang đọc to" ở cuối màn hình. Rút tai nghe hoặc có cuộc gọi thì tự tạm dừng.
+
+Trên Xiaomi HyperOS 3, thông báo này hiện ở **đảo quanh cụm camera** (Hyper Island). Nếu chưa thấy:
+
+1. Cho phép **thông báo** của Đọc Sách (ứng dụng hỏi ở lần đọc to đầu tiên).
+2. *Cài đặt → Ứng dụng → Đọc Sách → Tiết kiệm pin* → **Không hạn chế**, để HyperOS không tắt giọng đọc khi chạy nền.
+3. *Cài đặt → Thông báo và thanh trạng thái → Đảo (Hyper/Super Island)*: bật cho Đọc Sách nếu có trong danh sách.
+
+Ứng dụng gửi kèm thông tin "thông báo tiêu điểm" của Xiaomi (tên sách, chương, trạng thái) khi máy cho phép; nếu
+Xiaomi chưa cấp quyền này cho ứng dụng, đảo hiển thị giọng đọc như một trình phát nhạc.
 
 ## Đọc file EPUB bạn tự làm
 

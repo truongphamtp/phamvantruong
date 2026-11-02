@@ -5,6 +5,7 @@ import io.github.truongphamtp.docsach.data.BookImporter
 import io.github.truongphamtp.docsach.data.LibraryStore
 import io.github.truongphamtp.docsach.data.SettingsStore
 import io.github.truongphamtp.docsach.platform.AndroidCoverLoader
+import io.github.truongphamtp.docsach.platform.ReadAloudCenter
 import io.github.truongphamtp.docsach.sync.SyncManager
 import io.github.truongphamtp.docsach.sync.lan.LanSyncManager
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +28,8 @@ class DocSachApp : Application() {
         private set
     lateinit var lan: LanSyncManager
         private set
+    lateinit var readAloud: ReadAloudCenter
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -34,6 +37,8 @@ class DocSachApp : Application() {
         settings = SettingsStore(getSharedPreferences("doc_sach", MODE_PRIVATE))
         importer = BookImporter(this, library, settings, appScope)
         covers = AndroidCoverLoader(importer.coversDir)
+        // Đọc to chạy nền (thông báo kiểu trình phát nhạc, "đảo" HyperOS).
+        readAloud = ReadAloudCenter(this, library, importer.coversDir)
         importer.addGuideIfNeeded()
         // Đồng bộ qua OneDrive của chính bạn (chỉ chạy khi đã đăng nhập).
         sync = SyncManager(this, library, importer, BuildConfig.ONEDRIVE_CLIENT_ID)
